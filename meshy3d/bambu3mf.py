@@ -181,9 +181,11 @@ def read_painted(path: Path) -> tuple[trimesh.Trimesh, list[str], list[str]]:
     return trimesh.Trimesh(v, faces, process=False), [t[3] for t in tris], palette
 
 
-def repaint(src: Path, dst: Path, codes: list[str], palette: list[str] | None = None) -> Path:
+def repaint(src: Path, dst: Path, codes: list[str], palette: list[str] | None = None,
+            moved: dict[int, tuple[float, float, float]] | None = None) -> Path:
     """Copy a single-object painted 3MF with new per-triangle paint codes (and optionally new filament
-    colors). Geometry and every other file stay byte-for-byte the same."""
+    colors and new positions for some vertices, by index). Everything not changed stays byte-for-byte
+    the same, including unmoved vertices and all other files in the package."""
     import re
 
     with zipfile.ZipFile(src) as zin:
@@ -206,6 +208,20 @@ def repaint(src: Path, dst: Path, codes: list[str], palette: list[str] | None = 
     data = re.sub(rb"<triangle\b([^>]*?)(\s*/>)", sub, files[model])
     if count != n_tris:
         raise ValueError(f"rewrote {count} of {n_tris} triangles")
+    if moved:
+        vidx = -1
+
+        def vsub(m: re.Match) -> bytes:
+            nonlocal vidx
+            vidx += 1
+            if vidx not in moved:
+                return m.group(0)
+            x, y, z = moved[vidx]
+            return f'<vertex x="{x:.6g}" y="{y:.6g}" z="{z:.6g}"/>'.encode()
+
+        data = re.sub(rb"<vertex\b[^>]*/>", vsub, data)
+        if max(moved) > vidx:
+            raise ValueError(f"vertex index {max(moved)} out of range ({vidx + 1} vertices)")
     files[model] = data
     if palette is not None:
         settings = json.loads(files["Metadata/project_settings.config"])

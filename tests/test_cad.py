@@ -83,3 +83,15 @@ def test_figure_base_fills_floating_feature_and_keeps_paint(tmp_path):
     assert len(info["pedestals"]) == 1 and info["pedestals"][0]["gap_mm"] == pytest.approx(2 * 35 / 30, abs=0.3)
     assert base_part.mesh.is_watertight
     assert fig_part.mesh.bounds[0][2] == pytest.approx(5)
+
+
+def test_repaint_moves_only_given_vertices(tmp_path):
+    box = trimesh.creation.box(extents=[10, 10, 10])
+    src = bambu3mf.write([bambu3mf.Part("b", box, 1, paint=["4"] * 12)], ["#111111"], tmp_path / "a.3mf")
+    orig, codes, _ = bambu3mf.read_painted(src)
+    dst = bambu3mf.repaint(src, tmp_path / "b.3mf", codes, moved={0: (1.5, 2.5, 3.5)})
+    mesh, _, _ = bambu3mf.read_painted(dst)
+    np.testing.assert_allclose(mesh.vertices[0], [1.5, 2.5, 3.5])
+    np.testing.assert_array_equal(mesh.vertices[1:], orig.vertices[1:])
+    with pytest.raises(ValueError, match="out of range"):
+        bambu3mf.repaint(src, tmp_path / "c.3mf", codes, moved={99: (0, 0, 0)})
