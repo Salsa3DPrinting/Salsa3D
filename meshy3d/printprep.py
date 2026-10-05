@@ -286,6 +286,78 @@ def render_preview(mesh: trimesh.Trimesh, path: Path, max_faces: int = 500_000) 
     return path
 
 
+def hex_to_rgb(palette: list[str]) -> np.ndarray:
+    return np.array([[int(c[i:i + 2], 16) / 255 for i in (1, 3, 5)] for c in palette])
+
+
+def zbuffer(tri2d: np.ndarray, depth: np.ndarray, colors: np.ndarray, px_per_mm: float,
+            bg: float = 1.0) -> np.ndarray:
+    """Rasterize projected triangles with a depth buffer (smaller depth = nearer). Returns an RGB image.
+
+    tri2d: (N,3,2) screen coords in mm (x right, y up); depth: (N,3); colors: (N,3) in 0-1.
+    """
+    lo = tri2d.reshape(-1, 2).min(axis=0) - 2
+    hi = tri2d.reshape(-1, 2).max(axis=0) + 2
+    w, h = (np.ceil((hi - lo) * px_per_mm)).astype(int) + 1
+    img = np.full((h, w, 3), bg)
+    zbuf = np.full((h, w), np.inf)
+    pts = (tri2d - lo) * px_per_mm
+    pts[:, :, 1] = h - 1 - pts[:, :, 1]
+    for (a, b, c), (za, zb, zc), col in zip(pts, depth, colors):
+        x0, y0 = np.floor(np.minimum(np.minimum(a, b), c)).astype(int)
+        x1, y1 = np.ceil(np.maximum(np.maximum(a, b), c)).astype(int)
+        x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, w - 1), min(y1, h - 1)
+        if x1 < x0 or y1 < y0:
+            continue
+        area = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+        if abs(area) < 1e-9:
+            continue
+        xs, ys = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
+        w0 = ((b[0] - xs) * (c[1] - ys) - (b[1] - ys) * (c[0] - xs)) / area
+        w1 = ((c[0] - xs) * (a[1] - ys) - (c[1] - ys) * (a[0] - xs)) / area
+        w2 = 1 - w0 - w1
+        inside = (w0 >= -1e-6) & (w1 >= -1e-6) & (w2 >= -1e-6)
+        if not inside.any():
+            continue
+        z = w0 * za + w1 * zb + w2 * zc
+        region = zbuf[y0:y1 + 1, x0:x1 + 1]
+        nearer = inside & (z < region)
+        region[nearer] = z[nearer]
+        img[y0:y1 + 1, x0:x1 + 1][nearer] = col
+    return img
+
+
+def render_colored_faces(tri: np.ndarray, colors: np.ndarray, out_png: Path, title: str,
+                         views: tuple[tuple[float, str], ...] = ((0, "Front (-Y)"), (-35, "Front-right 3/4")),
+                         px_per_mm: float = 4.0) -> Path:
+    """Depth-buffered render of triangles (N,3,3) with per-face RGB colors, viewed from -Y (Z up)."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    normals = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    normals /= np.linalg.norm(normals, axis=1, keepdims=True) + 1e-12
+    light_dir = np.array([-0.35, -0.8, 0.5])
+    light_dir /= np.linalg.norm(light_dir)
+    fig, axes = plt.subplots(1, len(views), figsize=(5.5 * len(views), 8))
+    for ax, (angle, label) in zip(np.atleast_1d(axes), views):
+        a = np.radians(angle)
+        rot = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
+        t, n = tri @ rot.T, normals @ rot.T
+        shade = 0.45 + 0.55 * np.abs(n @ light_dir)
+        img = zbuffer(t[:, :, [0, 2]], t[:, :, 1], np.clip(colors * shade[:, None], 0, 1), px_per_mm)
+        ax.imshow(img)
+        ax.set_title(label)
+        ax.axis("off")
+    fig.suptitle(title)
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=110)
+    plt.close(fig)
+    return out_png
+
+
 # Bambu Studio per-triangle paint codes for unsubdivided triangles -> filament number.
 # From Bambu/PrusaSlicer's triangle-selector serialization (not documented by Meshy);
 # subdivided triangles use longer codes and are counted as "unknown" below.
@@ -300,12 +372,6 @@ def render_3mf_colors(path: Path, out_png: Path) -> dict:
     """
     import json
     import zipfile
-
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.collections import PolyCollection
 
     with zipfile.ZipFile(path) as z:
         models = [n for n in z.namelist() if n.endswith(".model")]
@@ -325,31 +391,7 @@ def render_3mf_colors(path: Path, out_png: Path) -> dict:
     unknown = int((filament == 0).sum())
     filament[(filament == 0) | (filament > len(palette))] = 1
 
-    rgb_palette = np.array([[int(p[i:i + 2], 16) / 255 for i in (1, 3, 5)] for p in palette])
-    colors = rgb_palette[filament - 1]
-    tri = verts[faces]
-    normals = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
-    normals /= np.linalg.norm(normals, axis=1, keepdims=True) + 1e-12
-
-    fig, axes = plt.subplots(1, 2, figsize=(11, 8))
-    for ax, angle, title in ((axes[0], 0, "Front (-Y)"), (axes[1], -35, "Front-left 3/4")):
-        a = np.radians(angle)
-        rot = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
-        t, n = tri @ rot.T, normals @ rot.T
-        facing = n[:, 1] < 0
-        light = np.clip(0.55 + 0.45 * (-n[:, 1] * 0.8 + n[:, 2] * 0.3), 0.35, 1)
-        order = np.argsort(-t[facing][:, :, 1].mean(axis=1))  # painter's algorithm, far to near
-        shaded = (colors[facing] * light[facing, None])[order]
-        ax.add_collection(PolyCollection(t[facing][order][:, :, [0, 2]], facecolors=shaded, edgecolors=shaded,
-                                         linewidths=0.2))
-        ax.autoscale()
-        ax.set_aspect("equal")
-        ax.set_title(title)
-        ax.axis("off")
-    fig.suptitle(f"{Path(path).name} in its filament colors")
-    fig.tight_layout()
-    out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_png, dpi=100)
-    plt.close(fig)
+    colors = hex_to_rgb(palette)[filament - 1]
+    render_colored_faces(verts[faces], colors, out_png, f"{Path(path).name} in its filament colors")
     counts = {f"{i}:{palette[i - 1]}": int((filament == i).sum()) for i in range(1, len(palette) + 1)}
     return {"preview": str(out_png), "faces_per_filament": counts, "unknown_paint_codes": unknown}

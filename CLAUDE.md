@@ -12,6 +12,10 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
 - `meshy3d/presets.py`: Creative Lab photo presets (table `PRESETS`), prototype -> build, per-preset post-processing.
 - `meshy3d/printprep.py`: local, credit-free: GLB (meters, Y-up) -> Z-up, scaled to mm, on the bed; multi-part layout; STL/3MF export; preview render.
 - `meshy3d/cli.py`: `python -m meshy3d {balance,text,image,prep,multicolor,split,preset}`. JSON result on stdout, progress on stderr.
+- `meshy3d/bambu3mf.py`: write/read multi-part Bambu Studio 3MF files with one filament per part.
+- `cad/`: parametric models built from scratch (no Meshy), e.g. `python -m cad.isolator`. Constants at the top of
+  each file are the dimensions; output goes to `output/cad-<name>/` with a color render, print preview and checks
+  (watertight parts, no overlaps between colors).
 - `tests/`: offline tests against a fake Meshy API (`tests/fakes.py`). No key or credits needed.
 
 ## Conventions
