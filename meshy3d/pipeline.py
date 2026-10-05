@@ -97,7 +97,25 @@ def multi_image_payload(images: list[str], opts: GenerateOptions, textured: bool
     return payload
 
 
-def generate_payload(kind: str, source: str | list[str], gen: GenerateOptions, textured: bool) -> dict[str, Any]:
+def image_task_source(task_id: str) -> dict[str, str]:
+    """Use a succeeded Meshy text-to-image / image-to-image task as the input instead of files."""
+    return {"image_task_id": task_id}
+
+
+def generate_payload(
+    kind: str, source: str | list[str] | dict[str, str], gen: GenerateOptions, textured: bool
+) -> dict[str, Any]:
+    if isinstance(source, dict):
+        # Image to 3D needs a task with exactly one image; multi-image to 3D takes a task with 1-4
+        # (a multi-view task gives 3). Meshy checks the count.
+        if kind == "text":
+            raise ValueError("an image task id only applies to image or multi-image")
+        payload: dict[str, Any] = {"input_task_id": source["image_task_id"], "ai_model": gen.ai_model,
+                                   "should_texture": textured}
+        if kind == "image" and gen.ai_model == "meshy-t2":
+            payload["model_type"] = "smart-topology"
+        _add_common(payload, gen)
+        return payload
     if kind == "text":
         return text_payload(source, gen)
     if kind == "image":
@@ -193,7 +211,7 @@ def new_out_dir(out_root: Path, label: str) -> Path:
 def run(
     client: MeshyClient,
     kind: str,
-    source: str | list[str],
+    source: str | list[str] | dict[str, str],
     gen: GenerateOptions,
     prt: PrintOptions,
     out_root: Path = Path("output"),
@@ -203,7 +221,8 @@ def run(
     """Run the full pipeline and return the manifest (also written to manifest.json).
 
     kind is "text" (source = prompt), "image" (source = path or URL) or "multi-image"
-    (source = list of 1-4 paths/URLs of the same object, front view first).
+    (source = list of 1-4 paths/URLs of the same object, front view first). For image and
+    multi-image, source can also be image_task_source(id) to start from a Meshy image task.
     existing_task_id resumes from an already-created generation task without paying again.
     """
     if prt.repair not in REPAIR_MODES:
@@ -211,7 +230,10 @@ def run(
     validate(kind, gen, prt)
     endpoint = ENDPOINTS[kind]
 
-    label = {"text": source, "image": Path(str(source)).stem, "multi-image": Path(str(source[0])).stem}[kind]
+    if isinstance(source, dict):
+        label = f"from-image-task-{source['image_task_id'][:8]}"
+    else:
+        label = {"text": source, "image": Path(str(source)).stem, "multi-image": Path(str(source[0])).stem}[kind]
     out_dir = new_out_dir(out_root, label)
     manifest: dict[str, Any] = {
         "kind": kind,

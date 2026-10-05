@@ -25,6 +25,22 @@ Meshy generates the shape from the prompt. Steer it toward geometry FDM can prin
 Use `--negative` for things to avoid (e.g. "thin parts, floating pieces, text").
 These are general FDM practices, not Meshy-documented rules; adjust when results say otherwise.
 
+## 2b. Optional: make reference images first
+
+Text straight to 3D works, but generating a reference image first lets the user see and approve the
+design cheaply (3-12 credits) before paying for 3D (20-30):
+
+```bash
+python -m meshy3d generate-image "<prompt>, single object, plain white background" --count 3 --dry-run
+python -m meshy3d generate-image "<prompt>, ..." --count 3            # 3 variants to choose from
+python -m meshy3d generate-image "<same object>" --from-image-task <chosen task> --multi-view  # 3 views
+```
+
+Read every `gen-*.png`, show the user, and build from the chosen task without downloading anything:
+`python -m meshy3d image --from-image-task <id> --height-mm 60` (one image) or
+`python -m meshy3d multi-image --from-image-task <multi-view id> --height-mm 60` (front view first).
+Generated views are invented, not photographed; say so when they fill in sides or backs.
+
 ## 3. Check cost, then confirm
 
 ```bash

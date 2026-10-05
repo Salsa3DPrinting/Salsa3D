@@ -39,6 +39,19 @@ Photo tips (general practice, not Meshy guarantees): one clear subject, plain ba
 the whole subject in frame. The collapsible fidget docs specifically warn that busy backgrounds,
 several subjects, or very thin shapes can make the task fail.
 
+## 2b. Improve or extend the photos (optional)
+
+- **Clean up** a photo (hand, background, clutter): `python -m meshy3d edit-image photo.jpg --extra "<what it is>"`
+  (one task per photo; compare each result with its original before using it).
+- **Missing angles** (only front shots): `python -m meshy3d generate-image "the same object from the front,
+  side and back, plain white background" --ref photo1.jpg --ref photo2.jpg --multi-view`. Then
+  `python -m meshy3d multi-image --from-image-task <id> ...`. These views are AI-invented; check them against
+  the real object with the user.
+- **Combine references** (e.g. a shape from one photo, colors/label from another): up to 5 `--ref` images and a
+  prompt that says what to take from each.
+Every image step is paid (3-12 credits per image; multi-view billing isn't documented, so estimates show a
+1-3x range). Dry-run first and confirm.
+
 ## 3. Presets: prototype, review, then build
 
 Two-stage presets bill each stage separately. **Always stop after the prototype and show the concept.**

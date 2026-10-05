@@ -46,6 +46,12 @@ python -m meshy3d prep some_model.glb --height-mm 40      # local only, no credi
 python -m meshy3d text "a parrot on a perch" --height-mm 80 --multicolor --colors 4 --printer prusa
 python -m meshy3d text "a robot" --height-mm 200 --split --split-mode by_parts --split-prompt "head, torso, arms, legs" --connectors
 
+# reference images: from text, from up to 5 photos, as a 3-view sheet; then straight into 3D
+python -m meshy3d generate-image "a chunky owl figurine, plain white background" --count 3
+python -m meshy3d generate-image "same owl, front/side/back" --from-image-task <id> --multi-view
+python -m meshy3d multi-image --from-image-task <multi-view id> --height-mm 50
+python -m meshy3d edit-image photo.jpg --extra "It is a ceramic mug."      # remove hand/background
+
 # Creative Lab presets: review the concept, then build
 python -m meshy3d preset list
 python -m meshy3d preset prototype keychain dog.jpg --param name_text=Rex

@@ -128,8 +128,11 @@ class FakeMeshy:
             body.update(consumed_credits=10, model_urls={"3mf": f"{assets}/model.3mf?Expires=1"})
         elif endpoint == "/v1/print/split":
             body.update(consumed_credits=10, part_count=2, model_urls={"glb": f"{assets}/split.glb?Expires=1"})
-        elif endpoint == "/v1/image-to-image":
-            body.update(image_urls=[f"{assets}/image.png?Expires=1"])  # documented response has no credits
+        elif endpoint in ("/v1/image-to-image", "/v1/text-to-image"):
+            # Docs: three image URLs for a multi-view task, otherwise one. The documented example
+            # responses have no consumed_credits; the real API does report it.
+            n = 3 if t["payload"].get("generate_multi_view") else 1
+            body.update(image_urls=[f"{assets}/image-{i}.png?Expires=1" for i in range(n)])
         elif lab and lab.group(2) == "/prototype":
             body.update(consumed_credits=PRESET_CREDITS["prototype"],
                         image_urls=[f"{assets}/concept.png?Expires=1"])

@@ -118,12 +118,28 @@ def build_parser() -> argparse.ArgumentParser:
     _add_generate_args(t)
 
     i = sub.add_parser("image", help="Generate from an image (local .png/.jpg or URL)")
-    i.add_argument("image")
+    i.add_argument("image", nargs="?")
+    i.add_argument("--from-image-task", help="Use a Meshy image task (exactly one image) instead of a file")
     _add_generate_args(i)
 
     mi = sub.add_parser("multi-image", help="Generate from 1-4 photos of the same object (front view first)")
-    mi.add_argument("images", nargs="+")
+    mi.add_argument("images", nargs="*")
+    mi.add_argument("--from-image-task", help="Use a Meshy image task (1-4 images, e.g. multi-view) instead of files")
     _add_generate_args(mi)
+
+    g = sub.add_parser("generate-image", help="Generate reference images from text and/or up to 5 photos")
+    g.add_argument("prompt")
+    g.add_argument("--ref", action="append", metavar="IMAGE",
+                   help="Reference photo (repeat, max 5); switches to image-to-image")
+    g.add_argument("--from-image-task", help="Use an earlier Meshy image task's output as the references")
+    g.add_argument("--multi-view", action="store_true", help="Return 3 views of the subject (for multi-image 3D)")
+    g.add_argument("--model", default="nano-banana-2", choices=list(images.EDIT_MODEL_CREDITS))
+    g.add_argument("--aspect", choices=images.ASPECT_RATIOS, help="Aspect ratio (not with --multi-view)")
+    g.add_argument("--transparent", action="store_true", help="remove_background: transparent PNG")
+    g.add_argument("--pose", choices=images.POSE_MODES, help="Character pose (text-to-image only)")
+    g.add_argument("--count", type=int, default=1, help="Independent variants to choose from (1-8)")
+    g.add_argument("--out", type=Path, default=Path("output"))
+    g.add_argument("--dry-run", action="store_true")
 
     e = sub.add_parser("edit-image", help="Edit photos with Meshy image-to-image (e.g. remove hand/background)")
     e.add_argument("images", nargs="+", help="Each image is edited separately")
@@ -219,6 +235,25 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.cmd in ("text", "image", "multi-image"):
         return _generate(args)
 
+    if args.cmd == "generate-image":
+        if args.dry_run:
+            endpoint, payload = images.generation_request(
+                args.prompt, args.model, args.ref, args.from_image_task, args.multi_view, args.aspect,
+                args.transparent, args.pose)
+            if "reference_image_urls" in payload:
+                payload["reference_image_urls"] = [_truncate_image({"image_url": u})["image_url"]
+                                                   for u in payload["reference_image_urls"]]
+            low, high = images.estimate_generation(endpoint, args.model, args.multi_view, args.count)
+            _print_json({"endpoint": endpoint, "request": payload, "count": args.count,
+                         "estimated_credits": [low, high],
+                         "note": "multi-view billing isn't documented; range covers 1-3 images" if args.multi_view
+                         else None})
+            return 0
+        _print_json(images.generate_images(
+            MeshyClient(), args.prompt, args.model, args.ref, args.from_image_task, args.multi_view, args.aspect,
+            args.transparent, args.pose, args.count, args.out))
+        return 0
+
     if args.cmd == "edit-image":
         prompt = " ".join(p for p in (args.prompt or images.CLEANUP_PROMPT, args.extra) if p)
         if args.dry_run:
@@ -266,8 +301,14 @@ def _generate(args: argparse.Namespace) -> int:
         seed=args.seed,
         geometry_resolution=args.ultra,
     )
-    source = {"text": "prompt", "image": "image", "multi-image": "images"}[args.cmd]
-    source = getattr(args, source)
+    source = getattr(args, {"text": "prompt", "image": "image", "multi-image": "images"}[args.cmd])
+    from_task = getattr(args, "from_image_task", None)
+    if from_task:
+        if source:
+            raise ValueError("give image file(s) or --from-image-task, not both")
+        source = pipeline.image_task_source(from_task)
+    elif not source:
+        raise ValueError("give image file(s) or --from-image-task")
     pipeline.validate(args.cmd, gen, prt)
     low, high = pipeline.estimate_credits(gen, prt.repair, include_generation=not args.resume_task, prt=prt)
 
