@@ -38,12 +38,43 @@ before the real run unless they already approved spending for this request. Chea
 `--model meshy-6-lite` or `--model meshy-t2` (5 credits vs 20). `--repair auto` (default) adds 10
 credits only if Meshy's printability verdict is `error`.
 
+### Optional: multi-color 3MF (`--multicolor`, +20 credits)
+
+For multi-filament printers (AMS/MMU etc.). Meshy needs a textured model for this, so the run adds a
+texture step (+10) and the multi-color conversion (+10). Ask how many filament colors they have
+(`--colors`, 1-16, default 4) and which slicer brand (`--printer`, default bambu, which writes that
+brand's slicer preset into the file). `--color-style cartoon` flattens colors into clean regions;
+`realistic` (default) samples the texture. Text mode can steer colors with `--texture-prompt`.
+
+The multi-color 3MF is Meshy's own file and is **not rescaled** (rescaling could break the slicer
+presets inside it). The result reports its measured size and `slicer_scale_percent`: tell the user
+to scale it by that percentage in the slicer. The measurement assumes the 3MF is Z-up in mm, which
+hasn't been confirmed on a real Meshy file yet, so ask them to check the size the slicer shows.
+
+### Optional: split into parts (`--split`, +10 credits)
+
+For models larger than the build plate, or to print parts in different colors or orientations.
+Only `latest`, `meshy-7.1` or `meshy-6` models (not the cheap ones). Modes: `auto` (Meshy picks
+cuts); `by_parts --split-prompt "head, torso, arms, base"` (1-10 named parts); `by_color` (image
+mode only). `--connectors` adds pegs and sockets at the cuts. Parts are scaled together so the
+assembled model is the requested size, then laid in a row on the plate as `parts/part-NN-*.stl` and
+`parts/parts.3mf`. Meshy's docs say the split result loses textures, so split parts print in
+single colors.
+
+### Already generated?
+
+To add these to an earlier run without regenerating, use the task id from its `manifest.json`:
+`python -m meshy3d split --task-id <generate task> --height-mm 60` or
+`python -m meshy3d multicolor --task-id <textured task> --height-mm 60`. Multi-color needs a textured task
+(an image run with `--multicolor`, or a text run's `texture` step), not an untextured preview.
+
 ## 4. Run it
 
 Same command without `--dry-run`. Generation takes minutes, so run it with a long Bash timeout
 (up to 600000 ms) or in the background. Output goes to `output/<timestamp>-<slug>/`:
 `raw.glb`, `repaired.glb` (if repaired), `model.stl`, `model.3mf`, `preview.png`, `thumbnail.png`,
-`manifest.json` (task ids, printability verdicts, credits used).
+`manifest.json` (task ids, printability verdicts, credits used), plus `multicolor.3mf` and
+`parts/` when requested. Progress goes to stderr; stdout is the final JSON summary.
 
 If the run dies after the generation task was created, don't regenerate (that pays again). Resume with
 the task id from the printed log or `manifest.json`: `--resume-task <id>`. Meshy keeps assets for
@@ -54,6 +85,8 @@ the task id from the printed log or `manifest.json`: `--resume-task <id>`. Meshy
 - **Look at `preview.png`** (Read it). The model must stand upright with its base on the red build-plate
   line. If it's lying down or upside down, re-run the local prep on the downloaded GLB, no credits needed:
   `python -m meshy3d prep output/<dir>/raw.glb --height-mm 60 --up z` (or `--up y`), then Read the new preview.
+- With `--split`, also Read `parts/preview.png`; with `--multicolor`, Read `multicolor-preview.png`
+  if one was made (the preview is best-effort and has no colors).
 - Check `mesh_report.warnings` (not watertight, multiple bodies, under 1 mm) and the Meshy verdict in
   `manifest.json` (`healthy` / `warning` / `error` / `unknown`). Report them plainly; don't call a model
   print-ready if it isn't watertight.

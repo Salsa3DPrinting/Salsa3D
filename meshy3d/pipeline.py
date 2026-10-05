@@ -12,14 +12,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from . import printprep
-from .client import IMAGE_TO_3D, PRINT_ANALYZE, PRINT_REPAIR, TEXT_TO_3D, MeshyClient, MeshyError
+from . import printing, printprep
+from .client import IMAGE_TO_3D, PRINT_ANALYZE, PRINT_REPAIR, TEXT_TO_3D, MeshyClient, MeshyError, log_stderr
 
 # Credits per request, from https://docs.meshy.ai/api/pricing (checked 2026-10-05).
 # Meshy can change these; treat the estimate as a guide and check `balance`.
 MESH_ONLY_CREDITS = {"latest": 20, "meshy-7.1": 20, "meshy-6": 20, "meshy-6-lite": 5, "meshy-t2": 5}
 ULTRA_GEOMETRY_SURCHARGE = 5
 REPAIR_CREDITS = 10
+# Texture for multi-color: text refine at 2K/4K is 10; image-to-3d with texture is +10 over mesh only.
+TEXTURE_CREDITS = 10
 
 REPAIR_MODES = ("auto", "always", "never")
 
@@ -39,6 +41,9 @@ class PrintOptions:
     size_axis: str = "height"
     formats: tuple[str, ...] = ("stl", "3mf")
     repair: str = "auto"
+    multicolor: printing.MultiColorOptions | None = None
+    split: printing.SplitOptions | None = None
+    texture_prompt: str | None = None  # text mode + multicolor only
 
 
 def text_payload(prompt: str, opts: GenerateOptions) -> dict[str, Any]:
@@ -52,11 +57,12 @@ def text_payload(prompt: str, opts: GenerateOptions) -> dict[str, Any]:
     return payload
 
 
-def image_payload(image: str, opts: GenerateOptions) -> dict[str, Any]:
+def image_payload(image: str, opts: GenerateOptions, textured: bool = False) -> dict[str, Any]:
+    # Texture only when a multi-color 3MF needs it; single-color prints don't.
     payload: dict[str, Any] = {
         "image_url": image_to_url(image),
         "ai_model": opts.ai_model,
-        "should_texture": False,
+        "should_texture": textured,
     }
     if opts.ai_model == "meshy-t2":
         payload["model_type"] = "smart-topology"
@@ -73,20 +79,40 @@ def _add_common(payload: dict[str, Any], opts: GenerateOptions) -> None:
         payload["geometry_resolution"] = opts.geometry_resolution
 
 
-def image_to_url(image: str) -> str:
-    """Pass http(s)/data URLs through; turn a local .png/.jpg/.jpeg into a data URI."""
+IMAGE_TO_3D_MIMES = ("image/png", "image/jpeg")
+
+
+def image_to_url(image: str, allowed_mimes: tuple[str, ...] = IMAGE_TO_3D_MIMES) -> str:
+    """Pass http(s)/data URLs through; turn a local image into a data URI."""
     if re.match(r"^(https?|data):", image):
         return image
     path = Path(image)
     if not path.is_file():
         raise FileNotFoundError(f"Image not found: {image}")
     mime = mimetypes.guess_type(path.name)[0]
-    if mime not in ("image/png", "image/jpeg"):
-        raise ValueError("Meshy accepts .png, .jpg and .jpeg images only")
+    if mime not in allowed_mimes:
+        exts = ", ".join(sorted({m.split("/")[1].replace("jpeg", "jpg/jpeg") for m in allowed_mimes}))
+        raise ValueError(f"This endpoint accepts {exts} images only, got {path.suffix}")
     return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode()}"
 
 
-def estimate_credits(opts: GenerateOptions, repair: str, include_generation: bool = True) -> tuple[int, int]:
+def validate(kind: str, gen: GenerateOptions, prt: PrintOptions) -> None:
+    """Reject combinations Meshy documents as unsupported, before any credits are spent."""
+    if prt.split:
+        if gen.ai_model not in printing.SPLIT_MODELS:
+            raise ValueError(f"Auto split needs ai_model in {printing.SPLIT_MODELS}, not {gen.ai_model}")
+        if prt.split.mode == "by_color" and kind != "image":
+            raise ValueError("Split mode by_color only works on models generated from an image")
+        prt.split.payload("check")
+    if prt.multicolor:
+        prt.multicolor.payload({})
+    if prt.texture_prompt and not (prt.multicolor and kind == "text"):
+        raise ValueError("texture_prompt only applies to text mode with multicolor")
+
+
+def estimate_credits(
+    opts: GenerateOptions, repair: str, include_generation: bool = True, prt: PrintOptions | None = None
+) -> tuple[int, int]:
     """Return (min, max) credits for one pipeline run. Analyze is free."""
     if opts.ai_model not in MESH_ONLY_CREDITS:
         raise ValueError(f"No price known for ai_model={opts.ai_model!r}")
@@ -95,8 +121,14 @@ def estimate_credits(opts: GenerateOptions, repair: str, include_generation: boo
         base = MESH_ONLY_CREDITS[opts.ai_model]
         if opts.geometry_resolution in ("2k", "4k"):
             base += ULTRA_GEOMETRY_SURCHARGE
-    low = base + (REPAIR_CREDITS if repair == "always" else 0)
-    high = base + (REPAIR_CREDITS if repair != "never" else 0)
+    extra = 0
+    if prt and prt.multicolor:
+        # On resume of a text run the texture step still runs; for image it was part of generation.
+        extra += printing.MULTICOLOR_CREDITS + (TEXTURE_CREDITS if include_generation else 0)
+    if prt and prt.split:
+        extra += printing.SPLIT_CREDITS
+    low = base + extra + (REPAIR_CREDITS if repair == "always" else 0)
+    high = base + extra + (REPAIR_CREDITS if repair != "never" else 0)
     return low, high
 
 
@@ -110,6 +142,12 @@ def slugify(text: str, max_len: int = 40) -> str:
     return slug[:max_len].rstrip("-") or "model"
 
 
+def new_out_dir(out_root: Path, label: str) -> Path:
+    out_dir = out_root / f"{time.strftime('%Y%m%d-%H%M%S')}-{slugify(label)}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir
+
+
 def run(
     client: MeshyClient,
     kind: str,
@@ -118,7 +156,7 @@ def run(
     prt: PrintOptions,
     out_root: Path = Path("output"),
     existing_task_id: str | None = None,
-    log: Callable[[str], None] = print,
+    log: Callable[[str], None] = log_stderr,
 ) -> dict:
     """Run the full pipeline and return the manifest (also written to manifest.json).
 
@@ -129,16 +167,22 @@ def run(
         raise ValueError("kind must be 'text' or 'image'")
     if prt.repair not in REPAIR_MODES:
         raise ValueError(f"repair must be one of {REPAIR_MODES}")
+    validate(kind, gen, prt)
     endpoint = TEXT_TO_3D if kind == "text" else IMAGE_TO_3D
 
-    label = source if kind == "text" else Path(source).stem
-    out_dir = out_root / f"{time.strftime('%Y%m%d-%H%M%S')}-{slugify(label)}"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = new_out_dir(out_root, source if kind == "text" else Path(source).stem)
     manifest: dict[str, Any] = {
         "kind": kind,
         "source": source,
         "generate_options": gen.__dict__,
-        "print_options": {**prt.__dict__, "formats": list(prt.formats)},
+        "print_options": {
+            "size_mm": prt.size_mm,
+            "size_axis": prt.size_axis,
+            "formats": list(prt.formats),
+            "repair": prt.repair,
+            "multicolor": prt.multicolor.__dict__ if prt.multicolor else None,
+            "split": prt.split.__dict__ if prt.split else None,
+        },
         "steps": {},
         "credits_consumed": 0,
     }
@@ -159,7 +203,10 @@ def run(
         task_id = existing_task_id
         log(f"Resuming generation task {task_id}")
     else:
-        payload = text_payload(source, gen) if kind == "text" else image_payload(source, gen)
+        if kind == "text":
+            payload = text_payload(source, gen)
+        else:
+            payload = image_payload(source, gen, textured=prt.multicolor is not None)
         task_id = client.create_task(endpoint, payload)
         log(f"Created {kind}-to-3d task {task_id}")
     manifest["steps"]["generate"] = {"task_id": task_id}
@@ -214,14 +261,47 @@ def run(
     manifest["mesh_report"] = rep.to_dict()
     manifest["output_dir"] = str(out_dir)
     save()
+
+    # 5. Optional: split into separately printable parts (from the generation task).
+    if prt.split:
+        result = printing.run_split(
+            client, task_id, prt.split, out_dir, prt.size_mm, prt.size_axis, log=log, on_progress=progress
+        )
+        manifest["steps"]["split"] = result
+        manifest["credits_consumed"] += result.get("consumed_credits") or 0
+        save()
+
+    # 6. Optional: multi-color 3MF. Needs a textured model; repair strips textures, so this
+    # branch always starts from the textured Meshy task, not the repaired mesh.
+    if prt.multicolor:
+        if kind == "text":
+            log(f"Texturing for multi-color ({TEXTURE_CREDITS} credits)")
+            refine: dict[str, Any] = {"mode": "refine", "preview_task_id": task_id}
+            if prt.texture_prompt:
+                refine["texture_prompt"] = prt.texture_prompt
+            texture_task = client.run_task(TEXT_TO_3D, refine, on_progress=progress)
+            _record(manifest, "texture", texture_task)
+            textured_id = texture_task["id"]
+        else:
+            textured_id = task_id  # generated with should_texture=True
+        save()
+        result = printing.run_multicolor(
+            client, {"input_task_id": textured_id}, prt.multicolor, out_dir,
+            prt.size_mm, prt.size_axis, log=log, on_progress=progress,
+        )
+        manifest["steps"]["multicolor"] = result
+        manifest["credits_consumed"] += result.get("consumed_credits") or 0
+        save()
     return manifest
 
 
-def prep_local(path: Path, prt: PrintOptions, up_axis: str | None = None, out_dir: Path | None = None) -> dict:
+def prep_local(
+    path: Path, prt: PrintOptions, up_axis: str | None = None, out_dir: Path | None = None, flip: bool = False
+) -> dict:
     """Print-prep an existing local model file without calling Meshy."""
     out_dir = out_dir or path.parent
     mesh = printprep.prepare(
-        printprep.load_mesh(path), prt.size_mm, prt.size_axis, up_axis or printprep.default_up_axis(path)
+        printprep.load_mesh(path), prt.size_mm, prt.size_axis, up_axis or printprep.default_up_axis(path), flip
     )
     files = printprep.export(mesh, out_dir, f"{path.stem}-print", list(prt.formats))
     preview = printprep.render_preview(mesh, out_dir / f"{path.stem}-preview.png")

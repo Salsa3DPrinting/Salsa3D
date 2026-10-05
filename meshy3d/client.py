@@ -7,6 +7,7 @@ then GET /<endpoint>/<id> is polled until status is terminal.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -21,9 +22,16 @@ TEXT_TO_3D = "/v2/text-to-3d"
 IMAGE_TO_3D = "/v1/image-to-3d"
 PRINT_ANALYZE = "/v1/print/analyze"
 PRINT_REPAIR = "/v1/print/repair"
+PRINT_MULTICOLOR = "/v1/print/multi-color"
+PRINT_SPLIT = "/v1/print/split"
 BALANCE = "/v1/balance"
 
 TERMINAL_STATUSES = {"SUCCEEDED", "FAILED", "CANCELED"}
+
+
+def log_stderr(message: str) -> None:
+    """Default progress log. Stderr keeps stdout clean for the CLI's JSON result."""
+    print(message, file=sys.stderr, flush=True)
 
 
 class MeshyError(RuntimeError):

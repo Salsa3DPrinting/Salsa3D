@@ -8,6 +8,7 @@ and exports STL/3MF.
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -49,35 +50,123 @@ def default_up_axis(path: str | Path) -> str:
     return "y" if Path(path).suffix.lower() in (".glb", ".gltf") else "z"
 
 
-def prepare(
-    mesh: trimesh.Trimesh,
-    size_mm: float,
-    size_axis: str = "height",
-    up_axis: str = "y",
-) -> trimesh.Trimesh:
-    """Return a copy oriented Z-up, uniformly scaled, centered in XY, resting on z = 0.
+ORIENTATIONS = ("y", "z", "flat")
 
-    size_axis="height" sets the Z extent; size_axis="longest" sets the largest extent.
-    """
+
+def orient(mesh: trimesh.Trimesh, up_axis: str, flip: bool = False) -> trimesh.Trimesh:
+    """Return a Z-up copy. up_axis "flat" lays the thinnest dimension along Z (reliefs, badges)."""
+    if up_axis not in ORIENTATIONS:
+        raise ValueError(f"up_axis must be one of {ORIENTATIONS}")
+    out = mesh.copy()
+    if up_axis == "y":
+        out.apply_transform(Y_UP_TO_Z_UP)
+    elif up_axis == "flat":
+        thinnest = int(np.argmin(out.extents))
+        if thinnest == 0:
+            out.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))
+        elif thinnest == 1:
+            out.apply_transform(Y_UP_TO_Z_UP)
+    if flip:
+        out.apply_transform(trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0]))
+    return out
+
+
+def scale_factor(extents: np.ndarray, size_mm: float, size_axis: str) -> float:
     if size_mm <= 0:
         raise ValueError("size_mm must be positive")
     if size_axis not in ("height", "longest"):
         raise ValueError("size_axis must be 'height' or 'longest'")
-    if up_axis not in ("y", "z"):
-        raise ValueError("up_axis must be 'y' or 'z'")
-
-    out = mesh.copy()
-    if up_axis == "y":
-        out.apply_transform(Y_UP_TO_Z_UP)
-
-    current = out.extents[2] if size_axis == "height" else out.extents.max()
+    current = extents[2] if size_axis == "height" else extents.max()
     if current <= 0:
         raise ValueError("mesh has zero size along the requested axis")
-    out.apply_scale(size_mm / current)
+    return size_mm / float(current)
 
-    lo, hi = out.bounds
-    out.apply_translation([-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -lo[2]])
+
+def place_on_bed(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+    lo, hi = mesh.bounds
+    mesh.apply_translation([-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -lo[2]])
+    return mesh
+
+
+def prepare(
+    mesh: trimesh.Trimesh,
+    size_mm: float | None,
+    size_axis: str = "height",
+    up_axis: str = "y",
+    flip: bool = False,
+) -> trimesh.Trimesh:
+    """Return a copy oriented Z-up, uniformly scaled, centered in XY, resting on z = 0.
+
+    size_axis="height" sets the Z extent; size_axis="longest" sets the largest extent.
+    size_mm=None keeps the file's own units (for outputs Meshy already sized in mm).
+    """
+    out = orient(mesh, up_axis, flip)
+    if size_mm is not None:
+        out.apply_scale(scale_factor(out.extents, size_mm, size_axis))
+    return place_on_bed(out)
+
+
+def load_parts(path: str | Path) -> list[tuple[str, trimesh.Trimesh]]:
+    """Load a multi-object file (e.g. a split GLB) as named parts, transforms applied."""
+    loaded = trimesh.load(str(path))
+    if isinstance(loaded, trimesh.Trimesh):
+        return [("part-1", loaded)]
+    parts = []
+    for node in loaded.graph.nodes_geometry:
+        transform, geom_name = loaded.graph[node]
+        geom = loaded.geometry[geom_name]
+        if isinstance(geom, trimesh.Trimesh) and len(geom.faces):
+            parts.append((str(node), geom.copy().apply_transform(transform)))
+    if not parts:
+        raise ValueError(f"{path} contains no mesh parts")
+    return parts
+
+
+def prepare_parts(
+    parts: list[tuple[str, trimesh.Trimesh]],
+    size_mm: float,
+    size_axis: str = "height",
+    up_axis: str = "y",
+    gap_mm: float = 5.0,
+) -> list[tuple[str, trimesh.Trimesh]]:
+    """Scale the assembled model to size, then put every part on the bed in a row along X.
+
+    Scaling uses the assembled extents, so the parts fit back together at the requested size.
+    Parts keep their assembled orientation; the slicer can rotate them for printing.
+    """
+    oriented = [(name, orient(m, up_axis)) for name, m in parts]
+    assembled = trimesh.util.concatenate([m for _, m in oriented])
+    factor = scale_factor(assembled.extents, size_mm, size_axis)
+    out, cursor = [], 0.0
+    for name, m in oriented:
+        m.apply_scale(factor)
+        lo, hi = m.bounds
+        m.apply_translation([cursor - lo[0], -(lo[1] + hi[1]) / 2, -lo[2]])
+        cursor += (hi[0] - lo[0]) + gap_mm
+        out.append((name, m))
     return out
+
+
+def export_parts(parts: list[tuple[str, trimesh.Trimesh]], out_dir: Path) -> dict[str, list[Path] | Path]:
+    """One STL per part plus a single 3MF holding every part as its own object."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stls, scene = [], trimesh.Scene()
+    for i, (name, m) in enumerate(parts, 1):
+        safe = re.sub(r"[^A-Za-z0-9_-]+", "-", name).strip("-") or "part"
+        path = out_dir / f"part-{i:02d}-{safe}.stl"
+        m.export(str(path), file_type="stl")
+        stls.append(path)
+        scene.add_geometry(m, node_name=f"{i:02d}-{safe}", geom_name=f"{i:02d}-{safe}")
+    three_mf = out_dir / "parts.3mf"
+    scene.export(str(three_mf), file_type="3mf")
+    return {"stl": stls, "3mf": three_mf}
+
+
+def measure(path: str | Path) -> dict:
+    """Extents and object count of a file as-is, without changing it (e.g. Meshy-made 3MF)."""
+    loaded = trimesh.load(str(path))
+    objects = len(loaded.geometry) if isinstance(loaded, trimesh.Scene) else 1
+    return {"extents": [round(float(x), 3) for x in loaded.extents], "objects": objects}
 
 
 def report(mesh: trimesh.Trimesh) -> MeshReport:
