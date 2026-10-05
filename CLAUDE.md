@@ -18,6 +18,8 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
 - `cad/`: parametric models built from scratch (no Meshy), e.g. `python -m cad.isolator`. Constants at the top of
   each file are the dimensions; output goes to `output/cad-<name>/` with a color render, print preview and checks
   (watertight parts, no overlaps between colors).
+- `cad/figure_base.py`: put a painted multi-color figure 3MF on a plain CAD base (extra filament slot), filling
+  small gaps under floating features. `bambu3mf.repaint` rewrites per-triangle paint codes (e.g. recolor a region).
 - `tests/`: offline tests against a fake Meshy API (`tests/fakes.py`). No key or credits needed.
 
 ## Conventions

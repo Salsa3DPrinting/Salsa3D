@@ -31,12 +31,18 @@ IDENTITY_4X4 = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 class Part:
     name: str
     mesh: trimesh.Trimesh
-    filament: int  # 1-based filament slot
+    filament: int  # 1-based filament slot; used for any triangle without a paint code
+    # Optional Bambu per-triangle paint codes (e.g. from Meshy's multi-color 3MF), one per face.
+    paint: list[str] | None = None
 
 
-def _mesh_xml(object_id: int, mesh: trimesh.Trimesh) -> str:
+def _mesh_xml(object_id: int, mesh: trimesh.Trimesh, paint: list[str] | None = None) -> str:
     verts = "\n".join(f'     <vertex x="{x:.5f}" y="{y:.5f}" z="{z:.5f}"/>' for x, y, z in mesh.vertices)
-    tris = "\n".join(f'     <triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in mesh.faces)
+    if paint is not None and len(paint) != len(mesh.faces):
+        raise ValueError(f"{len(paint)} paint codes for {len(mesh.faces)} faces")
+    codes = paint or [""] * len(mesh.faces)
+    tris = "\n".join(f'     <triangle v1="{a}" v2="{b}" v3="{c}"' + (f' paint_color="{code}"' if code else "") + "/>"
+                     for (a, b, c), code in zip(mesh.faces, codes))
     return (f'  <object id="{object_id}" p:UUID="{uuid.uuid4()}" type="model">\n   <mesh>\n    <vertices>\n'
             f"{verts}\n    </vertices>\n    <triangles>\n{tris}\n    </triangles>\n   </mesh>\n  </object>")
 
@@ -78,7 +84,7 @@ def write(parts: list[Part], palette: list[str], path: Path, name: str = "model"
 
     obj_file = "/3D/Objects/object_1.model"
     assembly_id = len(parts) + 1
-    objects_xml = "\n".join(_mesh_xml(i, m) for i, m in enumerate(meshes, 1))
+    objects_xml = "\n".join(_mesh_xml(i, m, p.paint) for i, (p, m) in enumerate(zip(parts, meshes), 1))
     sub_model = (f'<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" '
                  f'xmlns="{CORE_NS}" xmlns:BambuStudio="{BAMBU_NS}" xmlns:p="{PROD_NS}" requiredextensions="p">\n'
                  f' <metadata name="BambuStudio:3mfVersion">2</metadata>\n <resources>\n{objects_xml}\n'
@@ -150,3 +156,62 @@ def read_parts(path: Path) -> list[dict]:
         name, filament = filaments[int(oid)]
         out.append({"name": name, "filament": filament, "mesh": trimesh.Trimesh(v, f, process=False)})
     return out
+
+
+def read_painted(path: Path) -> tuple[trimesh.Trimesh, list[str], list[str]]:
+    """Read a single-object painted 3MF (like Meshy's multi-color output).
+
+    Returns (mesh in the object's own coordinates, paint code per face, filament palette as #RRGGBB).
+    Face order is preserved so the codes stay aligned.
+    """
+    import re
+
+    with zipfile.ZipFile(path) as z:
+        models = [n for n in z.namelist() if n.endswith(".model")]
+        data = max((z.read(n) for n in models), key=len).decode()
+        try:
+            palette = [c[:7] for c in json.loads(z.read("Metadata/project_settings.config"))["filament_colour"]]
+        except (KeyError, ValueError):
+            palette = []
+    v = np.array(re.findall(r'<vertex x="([^"]+)" y="([^"]+)" z="([^"]+)"', data), dtype=float)
+    tris = re.findall(r'<triangle v1="(\d+)" v2="(\d+)" v3="(\d+)"(?: paint_color="([^"]*)")?', data)
+    if not len(v) or not tris:
+        raise ValueError(f"{path}: no mesh found")
+    faces = np.array([t[:3] for t in tris], dtype=int)
+    return trimesh.Trimesh(v, faces, process=False), [t[3] for t in tris], palette
+
+
+def repaint(src: Path, dst: Path, codes: list[str], palette: list[str] | None = None) -> Path:
+    """Copy a single-object painted 3MF with new per-triangle paint codes (and optionally new filament
+    colors). Geometry and every other file stay byte-for-byte the same."""
+    import re
+
+    with zipfile.ZipFile(src) as zin:
+        infos = zin.infolist()
+        files = {i.filename: zin.read(i.filename) for i in infos}
+    model = max((n for n in files if n.endswith(".model")), key=lambda n: len(files[n]))
+    n_tris = len(re.findall(rb"<triangle\b", files[model]))
+    if n_tris != len(codes):
+        raise ValueError(f"{len(codes)} codes for {n_tris} triangles")
+    it = iter(codes)
+    count = 0
+
+    def sub(m: re.Match) -> bytes:
+        nonlocal count
+        count += 1
+        code = next(it)
+        attrs = re.sub(rb'\s*paint_color="[^"]*"', b"", m.group(1))
+        return b"<triangle" + attrs + (f' paint_color="{code}"'.encode() if code else b"") + m.group(2)
+
+    data = re.sub(rb"<triangle\b([^>]*?)(\s*/>)", sub, files[model])
+    if count != n_tris:
+        raise ValueError(f"rewrote {count} of {n_tris} triangles")
+    files[model] = data
+    if palette is not None:
+        settings = json.loads(files["Metadata/project_settings.config"])
+        settings["filament_colour"] = [c.upper() + ("FF" if len(c) == 7 else "") for c in palette]
+        files["Metadata/project_settings.config"] = json.dumps(settings, indent=4).encode()
+    with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in infos:
+            zout.writestr(info, files[info.filename])
+    return dst

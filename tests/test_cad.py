@@ -47,3 +47,39 @@ def test_isolator_builds_clean():
     assert {p.filament for p in parts} == set(range(1, 9))
     combined = isolator.union([p.mesh for p in parts])
     assert combined.is_watertight and len(combined.split(only_watertight=False)) == 1
+
+
+def test_repaint_changes_only_codes_and_palette(tmp_path):
+    box = trimesh.creation.box(extents=[10, 10, 10])
+    src = bambu3mf.write([bambu3mf.Part("b", box, 1, paint=["4"] * 12)], ["#111111", "#222222"], tmp_path / "a.3mf")
+    new = ["8"] * 6 + [""] * 6
+    dst = bambu3mf.repaint(src, tmp_path / "b.3mf", new, ["#AABBCC", "#222222"])
+    mesh, codes, palette = bambu3mf.read_painted(dst)
+    assert codes == new and palette == ["#AABBCC", "#222222"]
+    orig, _, _ = bambu3mf.read_painted(src)
+    np.testing.assert_array_equal(mesh.vertices, orig.vertices)
+    np.testing.assert_array_equal(mesh.faces, orig.faces)
+    with pytest.raises(ValueError, match="codes for 12"):
+        bambu3mf.repaint(src, tmp_path / "c.3mf", ["4"] * 3)
+
+
+def test_figure_base_fills_floating_feature_and_keeps_paint(tmp_path):
+    from cad import figure_base
+
+    body = trimesh.creation.box(extents=[10, 10, 30])
+    body.apply_translation([0, 0, 15])
+    arm = trimesh.creation.box(extents=[4, 4, 20])  # hangs 2 mm above the bottom, beside the body
+    arm.apply_translation([9, 0, 12])
+    bridge = trimesh.creation.box(extents=[6, 4, 4])
+    bridge.apply_translation([6, 0, 20])
+    fig = trimesh.boolean.union([body, arm, bridge], engine="manifold")
+    paint = ["8"] * len(fig.faces)
+    src = bambu3mf.write([bambu3mf.Part("fig", fig, 1, paint=paint)], ["#FF0000", "#00FF00"], tmp_path / "f.3mf")
+
+    parts, info = figure_base.build(src, total_mm=40, base_mm=5, cell_mm=0.5)
+    fig_part, base_part = parts
+    assert fig_part.paint == paint and base_part.filament == 3
+    assert info["total_height_mm"] == pytest.approx(40)
+    assert len(info["pedestals"]) == 1 and info["pedestals"][0]["gap_mm"] == pytest.approx(2 * 35 / 30, abs=0.3)
+    assert base_part.mesh.is_watertight
+    assert fig_part.mesh.bounds[0][2] == pytest.approx(5)
