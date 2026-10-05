@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import pipeline, presets, printing
+from . import images, pipeline, presets, printing
 from .client import MeshyClient, MeshyError
 from .printprep import ORIENTATIONS
 
@@ -121,6 +121,19 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("image")
     _add_generate_args(i)
 
+    mi = sub.add_parser("multi-image", help="Generate from 1-4 photos of the same object (front view first)")
+    mi.add_argument("images", nargs="+")
+    _add_generate_args(mi)
+
+    e = sub.add_parser("edit-image", help="Edit photos with Meshy image-to-image (e.g. remove hand/background)")
+    e.add_argument("images", nargs="+", help="Each image is edited separately")
+    e.add_argument("--prompt", help="Edit instruction (default: clean product-photo cleanup)")
+    e.add_argument("--extra", help="Appended to the prompt, e.g. what the object is")
+    e.add_argument("--model", default="nano-banana-2", choices=list(images.EDIT_MODEL_CREDITS))
+    e.add_argument("--aspect", choices=images.ASPECT_RATIOS, help="Output aspect ratio (default 1:1)")
+    e.add_argument("--out", type=Path, default=Path("output"))
+    e.add_argument("--dry-run", action="store_true")
+
     p = sub.add_parser("prep", help="Print-prep an existing local model (no API calls)")
     p.add_argument("model", type=Path)
     _add_size_args(p)
@@ -203,8 +216,19 @@ def _dispatch(args: argparse.Namespace) -> int:
         _print_json(pipeline.prep_local(args.model, prt, args.up, args.out, args.flip))
         return 0
 
-    if args.cmd in ("text", "image"):
+    if args.cmd in ("text", "image", "multi-image"):
         return _generate(args)
+
+    if args.cmd == "edit-image":
+        prompt = " ".join(p for p in (args.prompt or images.CLEANUP_PROMPT, args.extra) if p)
+        if args.dry_run:
+            reqs = [_truncate_image({**pl, "image_url": pl["reference_image_urls"][0]})
+                    for pl in (images.edit_payload(i, prompt, args.model, args.aspect) for i in args.images)]
+            _print_json({"requests": [{k: v for k, v in r.items() if k != "reference_image_urls"} for r in reqs],
+                         "estimated_credits": images.estimate_credits(len(args.images), args.model)})
+            return 0
+        _print_json(images.edit_images(MeshyClient(), args.images, prompt, args.model, args.aspect, args.out))
+        return 0
 
     if args.cmd == "multicolor":
         size, axis = _size(args, required=False)
@@ -242,15 +266,15 @@ def _generate(args: argparse.Namespace) -> int:
         seed=args.seed,
         geometry_resolution=args.ultra,
     )
-    source = args.prompt if args.cmd == "text" else args.image
+    source = {"text": "prompt", "image": "image", "multi-image": "images"}[args.cmd]
+    source = getattr(args, source)
     pipeline.validate(args.cmd, gen, prt)
     low, high = pipeline.estimate_credits(gen, prt.repair, include_generation=not args.resume_task, prt=prt)
 
     if args.dry_run:
-        if args.cmd == "text":
-            payload = pipeline.text_payload(source, gen)
-        else:
-            payload = pipeline.image_payload(source, gen, textured=prt.multicolor is not None)
+        payload = pipeline.generate_payload(args.cmd, source, gen, textured=prt.multicolor is not None)
+        if "image_urls" in payload:
+            payload["image_urls"] = [_truncate_image({"image_url": u})["image_url"] for u in payload["image_urls"]]
         _print_json({
             "request": _truncate_image(payload),
             "multicolor": prt.multicolor.__dict__ if prt.multicolor else None,

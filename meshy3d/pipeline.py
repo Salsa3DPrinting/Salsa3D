@@ -13,7 +13,16 @@ from pathlib import Path
 from typing import Any
 
 from . import printing, printprep
-from .client import IMAGE_TO_3D, PRINT_ANALYZE, PRINT_REPAIR, TEXT_TO_3D, MeshyClient, MeshyError, log_stderr
+from .client import (
+    IMAGE_TO_3D,
+    MULTI_IMAGE_TO_3D,
+    PRINT_ANALYZE,
+    PRINT_REPAIR,
+    TEXT_TO_3D,
+    MeshyClient,
+    MeshyError,
+    log_stderr,
+)
 
 # Credits per request, from https://docs.meshy.ai/api/pricing (checked 2026-10-05).
 # Meshy can change these; treat the estimate as a guide and check `balance`.
@@ -24,6 +33,11 @@ REPAIR_CREDITS = 10
 TEXTURE_CREDITS = 10
 
 REPAIR_MODES = ("auto", "always", "never")
+
+KINDS = ("text", "image", "multi-image")
+ENDPOINTS = {"text": TEXT_TO_3D, "image": IMAGE_TO_3D, "multi-image": MULTI_IMAGE_TO_3D}
+# Multi-image to 3D accepts these ai_models (no meshy-t2), per its docs.
+MULTI_IMAGE_MODELS = ("latest", "meshy-7.1", "meshy-6", "meshy-6-lite")
 
 
 @dataclass
@@ -70,6 +84,27 @@ def image_payload(image: str, opts: GenerateOptions, textured: bool = False) -> 
     return payload
 
 
+def multi_image_payload(images: list[str], opts: GenerateOptions, textured: bool = False) -> dict[str, Any]:
+    """1-4 photos of the same object; with latest/meshy-7.1 the first is the front view."""
+    if not 1 <= len(images) <= 4:
+        raise ValueError("multi-image needs 1 to 4 images")
+    payload: dict[str, Any] = {
+        "image_urls": [image_to_url(i) for i in images],
+        "ai_model": opts.ai_model,
+        "should_texture": textured,
+    }
+    _add_common(payload, opts)
+    return payload
+
+
+def generate_payload(kind: str, source: str | list[str], gen: GenerateOptions, textured: bool) -> dict[str, Any]:
+    if kind == "text":
+        return text_payload(source, gen)
+    if kind == "image":
+        return image_payload(source, gen, textured)
+    return multi_image_payload(list(source), gen, textured)
+
+
 def _add_common(payload: dict[str, Any], opts: GenerateOptions) -> None:
     if opts.target_polycount:
         payload["target_polycount"] = opts.target_polycount
@@ -98,10 +133,17 @@ def image_to_url(image: str, allowed_mimes: tuple[str, ...] = IMAGE_TO_3D_MIMES)
 
 def validate(kind: str, gen: GenerateOptions, prt: PrintOptions) -> None:
     """Reject combinations Meshy documents as unsupported, before any credits are spent."""
+    if kind not in KINDS:
+        raise ValueError(f"kind must be one of {KINDS}")
+    if kind == "multi-image":
+        if gen.ai_model not in MULTI_IMAGE_MODELS:
+            raise ValueError(f"multi-image needs ai_model in {MULTI_IMAGE_MODELS}, not {gen.ai_model}")
+        if gen.geometry_resolution == "4k":
+            raise ValueError("multi-image supports geometry_resolution 2k or standard, not 4k")
     if prt.split:
         if gen.ai_model not in printing.SPLIT_MODELS:
             raise ValueError(f"Auto split needs ai_model in {printing.SPLIT_MODELS}, not {gen.ai_model}")
-        if prt.split.mode == "by_color" and kind != "image":
+        if prt.split.mode == "by_color" and kind == "text":
             raise ValueError("Split mode by_color only works on models generated from an image")
         prt.split.payload("check")
     if prt.multicolor:
@@ -151,7 +193,7 @@ def new_out_dir(out_root: Path, label: str) -> Path:
 def run(
     client: MeshyClient,
     kind: str,
-    source: str,
+    source: str | list[str],
     gen: GenerateOptions,
     prt: PrintOptions,
     out_root: Path = Path("output"),
@@ -160,17 +202,17 @@ def run(
 ) -> dict:
     """Run the full pipeline and return the manifest (also written to manifest.json).
 
-    kind is "text" (source = prompt) or "image" (source = path or URL).
+    kind is "text" (source = prompt), "image" (source = path or URL) or "multi-image"
+    (source = list of 1-4 paths/URLs of the same object, front view first).
     existing_task_id resumes from an already-created generation task without paying again.
     """
-    if kind not in ("text", "image"):
-        raise ValueError("kind must be 'text' or 'image'")
     if prt.repair not in REPAIR_MODES:
         raise ValueError(f"repair must be one of {REPAIR_MODES}")
     validate(kind, gen, prt)
-    endpoint = TEXT_TO_3D if kind == "text" else IMAGE_TO_3D
+    endpoint = ENDPOINTS[kind]
 
-    out_dir = new_out_dir(out_root, source if kind == "text" else Path(source).stem)
+    label = {"text": source, "image": Path(str(source)).stem, "multi-image": Path(str(source[0])).stem}[kind]
+    out_dir = new_out_dir(out_root, label)
     manifest: dict[str, Any] = {
         "kind": kind,
         "source": source,
@@ -203,10 +245,7 @@ def run(
         task_id = existing_task_id
         log(f"Resuming generation task {task_id}")
     else:
-        if kind == "text":
-            payload = text_payload(source, gen)
-        else:
-            payload = image_payload(source, gen, textured=prt.multicolor is not None)
+        payload = generate_payload(kind, source, gen, textured=prt.multicolor is not None)
         task_id = client.create_task(endpoint, payload)
         log(f"Created {kind}-to-3d task {task_id}")
     manifest["steps"]["generate"] = {"task_id": task_id}

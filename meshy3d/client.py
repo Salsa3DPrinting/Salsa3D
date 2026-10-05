@@ -20,6 +20,8 @@ BASE_URL = "https://api.meshy.ai/openapi"
 # Endpoint paths relative to BASE_URL.
 TEXT_TO_3D = "/v2/text-to-3d"
 IMAGE_TO_3D = "/v1/image-to-3d"
+MULTI_IMAGE_TO_3D = "/v1/multi-image-to-3d"
+IMAGE_TO_IMAGE = "/v1/image-to-image"
 PRINT_ANALYZE = "/v1/print/analyze"
 PRINT_REPAIR = "/v1/print/repair"
 PRINT_MULTICOLOR = "/v1/print/multi-color"
