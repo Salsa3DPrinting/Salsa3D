@@ -1,6 +1,7 @@
 """Multi-color 3MF, auto split, and Creative Lab presets."""
 
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -115,6 +116,8 @@ def test_text_multicolor_textures_then_converts_the_textured_task(tmp_path):
     assert Path(result["file"]).exists()
     assert result["measured"]["objects"] == 2
     assert result["slicer_scale_percent"] == pytest.approx(round(100 * 40 / 30, 1))
+    assert result["scaled_measured"]["extents"][2] == pytest.approx(40, abs=0.01)
+    assert Path(result["scaled_file"]).name == "multicolor-40mm.3mf"
     assert m["credits_consumed"] == 20 + 10 + 10
     assert Path(m["print_files"][0]).exists()  # single-color STL is still produced
 
@@ -295,3 +298,66 @@ def test_preset_multicolor_combination_rejected_before_build(tmp_path):
             presets.run_build(make_client(fake), presets.get(name), tmp_path, prototype_id="p", fmt=fmt,
                               multicolor=printing.MultiColorOptions(), **QUIET)
     assert fake.posts("/build") == []  # nothing was charged
+
+
+def test_textured_glb_with_uv_seams_is_merged_for_printing(tmp_path):
+    # Real Meshy textured models split vertices at UV seams; that made the mesh look open and
+    # fragmented, and splitting it with its texture attached ran out of memory.
+    from PIL import Image
+
+    box = trimesh.creation.box(extents=[0.02, 0.05, 0.03])
+    box.unmerge_vertices()  # every face gets its own vertices, like UV seams everywhere
+    uv = np.random.default_rng(0).random((len(box.vertices), 2))
+    box.visual = trimesh.visual.TextureVisuals(uv=uv, image=Image.new("RGB", (64, 64), "red"))
+    path = tmp_path / "textured.glb"
+    path.write_bytes(trimesh.Scene(box).export(file_type="glb"))
+
+    mesh = printprep.load_mesh(path)
+    assert not isinstance(mesh.visual, trimesh.visual.TextureVisuals)
+    rep = printprep.report(printprep.prepare(mesh, 50, "height", "y"))
+    assert rep.is_watertight and rep.bodies == 1
+
+
+def test_scale_3mf_scales_vertices_and_keeps_everything_else(tmp_path):
+    import zipfile
+
+    src = tmp_path / "in.3mf"
+    src.write_bytes(trimesh.creation.box(extents=[10, 20, 30]).export(file_type="3mf"))
+    # Simulate Bambu per-triangle paint data that must survive untouched.
+    with zipfile.ZipFile(src) as z:
+        files = {i.filename: z.read(i.filename) for i in z.infolist()}
+    model = next(n for n in files if n.endswith(".model"))
+    files[model] = files[model].replace(b"<triangle ", b'<triangle paint_color="4C" ')
+    files["Metadata/project_settings.config"] = b'{"filament_colour": ["#A73E33FF"]}'
+    with zipfile.ZipFile(src, "w") as z:
+        for name, data in files.items():
+            z.writestr(name, data)
+
+    dst = printprep.scale_3mf(src, tmp_path / "out.3mf", 2.5)
+    assert printprep.measure(dst)["extents"] == [25, 50, 75]
+    with zipfile.ZipFile(dst) as z:
+        out = {i.filename: z.read(i.filename) for i in z.infolist()}
+    assert out["Metadata/project_settings.config"] == files["Metadata/project_settings.config"]
+    assert out[model].count(b'paint_color="4C"') == files[model].count(b'paint_color="4C"') == 12
+
+
+def test_render_3mf_colors_maps_bambu_paint_codes(tmp_path):
+    import zipfile
+
+    src = tmp_path / "painted.3mf"
+    src.write_bytes(trimesh.creation.box(extents=[10, 20, 30]).export(file_type="3mf"))
+    with zipfile.ZipFile(src) as z:
+        files = {i.filename: z.read(i.filename) for i in z.infolist()}
+    model = next(n for n in files if n.endswith(".model"))
+    codes = iter([b"4", b"8", b"0C", b"ZZ"] * 3)
+    files[model] = re.sub(rb"<triangle ([^>]*?)(/?)>",
+                          lambda m: b"<triangle " + m.group(1).rstrip() + b' paint_color="' + next(codes) + b'"' + m.group(2) + b">",
+                          files[model])
+    files["Metadata/project_settings.config"] = b'{"filament_colour": ["#FF0000FF", "#00FF00FF", "#0000FFFF"]}'
+    with zipfile.ZipFile(src, "w") as z:
+        for name, data in files.items():
+            z.writestr(name, data)
+    out = printprep.render_3mf_colors(src, tmp_path / "colors.png")
+    assert (tmp_path / "colors.png").exists()
+    assert out["faces_per_filament"] == {"1:#FF0000": 6, "2:#00FF00": 3, "3:#0000FF": 3}  # ZZ counted under 1
+    assert out["unknown_paint_codes"] == 3

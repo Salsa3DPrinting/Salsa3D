@@ -251,7 +251,10 @@ def run(
     manifest["steps"]["generate"] = {"task_id": task_id}
     save()
     gen_task = client.wait_for_task(endpoint, task_id, on_progress=progress)
-    _record(manifest, "generate", gen_task)
+    # A resumed task was paid for by the earlier run; don't count it again here.
+    _record(manifest, "generate", gen_task, count=not existing_task_id)
+    if existing_task_id:
+        manifest["steps"]["generate"]["resumed"] = True
     model_url = _glb_url(gen_task)
     model_path = client.download(model_url, out_dir / "raw.glb")
     if gen_task.get("thumbnail_url"):
@@ -351,14 +354,15 @@ def prep_local(
     }
 
 
-def _record(manifest: dict, step: str, task: dict) -> None:
+def _record(manifest: dict, step: str, task: dict, count: bool = True) -> None:
     manifest["steps"][step] = {
         "task_id": task["id"],
         "status": task.get("status"),
         "consumed_credits": task.get("consumed_credits"),
         "expires_at": task.get("expires_at"),
     }
-    manifest["credits_consumed"] += task.get("consumed_credits") or 0
+    if count:
+        manifest["credits_consumed"] += task.get("consumed_credits") or 0
 
 
 def _glb_url(task: dict) -> str:

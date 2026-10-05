@@ -203,3 +203,14 @@ def test_cli_prep_local_file(tmp_path, capsys):
     out = json.loads(capsys.readouterr().out)
     assert max(out["mesh_report"]["extents_mm"]) == pytest.approx(80)
     assert (tmp_path / "thing-print.stl").exists()
+
+
+def test_resume_does_not_recount_generation_credits(tmp_path):
+    fake = FakeMeshy()
+    fake.tasks["task-0"] = {"endpoint": "/v2/text-to-3d", "payload": {}, "polls": 5}
+    m = pipeline.run(make_client(fake), "text", "vase", pipeline.GenerateOptions(),
+                     pipeline.PrintOptions(size_mm=40), out_root=tmp_path, existing_task_id="task-0",
+                     log=lambda _: None)
+    assert fake.posts("/v2/text-to-3d") == []
+    assert m["steps"]["generate"]["resumed"] is True
+    assert m["credits_consumed"] == 0

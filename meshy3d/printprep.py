@@ -34,8 +34,18 @@ class MeshReport:
         return asdict(self)
 
 
+def geometry_only(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+    """Drop textures/colors and merge duplicate vertices.
+
+    Textured models duplicate vertices along UV seams. Left as-is, the mesh reads as many
+    disconnected open pieces: not watertight, and splitting it copies the texture per piece
+    (this exhausted memory on a 225k-face Meshy model). Printing only needs the geometry.
+    """
+    return trimesh.Trimesh(vertices=mesh.vertices, faces=mesh.faces, process=True)
+
+
 def load_mesh(path: str | Path) -> trimesh.Trimesh:
-    """Load any trimesh-supported file as a single mesh with scene transforms applied."""
+    """Load any trimesh-supported file as one geometry-only mesh with scene transforms applied."""
     loaded = trimesh.load(str(path))
     if isinstance(loaded, trimesh.Scene):
         if not loaded.geometry:
@@ -43,7 +53,7 @@ def load_mesh(path: str | Path) -> trimesh.Trimesh:
         loaded = loaded.to_geometry()
     if not isinstance(loaded, trimesh.Trimesh) or len(loaded.faces) == 0:
         raise ValueError(f"{path} did not load as a triangle mesh")
-    return loaded
+    return geometry_only(loaded)
 
 
 def default_up_axis(path: str | Path) -> str:
@@ -116,7 +126,7 @@ def load_parts(path: str | Path) -> list[tuple[str, trimesh.Trimesh]]:
         transform, geom_name = loaded.graph[node]
         geom = loaded.geometry[geom_name]
         if isinstance(geom, trimesh.Trimesh) and len(geom.faces):
-            parts.append((str(node), geom.copy().apply_transform(transform)))
+            parts.append((str(node), geometry_only(geom).apply_transform(transform)))
     if not parts:
         raise ValueError(f"{path} contains no mesh parts")
     return parts
@@ -202,7 +212,34 @@ def export(mesh: trimesh.Trimesh, out_dir: Path, stem: str, formats: list[str]) 
     return paths
 
 
-def render_preview(mesh: trimesh.Trimesh, path: Path, max_faces: int = 60000) -> Path:
+_VERTEX = re.compile(rb"<vertex\b[^>]*>")
+_COORD = re.compile(rb'\b([xyz])="([^"]+)"')
+
+
+def scale_3mf(src: Path, dst: Path, factor: float) -> Path:
+    """Copy a 3MF with every mesh vertex scaled about the origin; all other content is untouched.
+
+    Used for Meshy's multi-color 3MF so per-triangle paint colors and slicer settings survive.
+    """
+    import zipfile
+
+    if factor <= 0:
+        raise ValueError("factor must be positive")
+
+    def scale_vertex(match: re.Match) -> bytes:
+        return _COORD.sub(lambda c: c.group(1) + b'="' + f"{float(c.group(2)) * factor:.9g}".encode() + b'"',
+                          match.group(0))
+
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename.endswith(".model"):
+                data = _VERTEX.sub(scale_vertex, data)
+            zout.writestr(info, data)
+    return dst
+
+
+def render_preview(mesh: trimesh.Trimesh, path: Path, max_faces: int = 500_000) -> Path:
     """Save front, side and isometric views (mm grid, build plate at z = 0) to a PNG."""
     import matplotlib
 
@@ -247,3 +284,72 @@ def render_preview(mesh: trimesh.Trimesh, path: Path, max_faces: int = 60000) ->
     fig.savefig(path, dpi=110)
     plt.close(fig)
     return path
+
+
+# Bambu Studio per-triangle paint codes for unsubdivided triangles -> filament number.
+# From Bambu/PrusaSlicer's triangle-selector serialization (not documented by Meshy);
+# subdivided triangles use longer codes and are counted as "unknown" below.
+BAMBU_PAINT_CODES = {"": 1, "4": 1, "8": 2, "0C": 3, "1C": 4, "2C": 5, "3C": 6, "4C": 7, "5C": 8,
+                     "6C": 9, "7C": 10, "8C": 11, "9C": 12, "AC": 13, "BC": 14, "CC": 15, "DC": 16}
+
+
+def render_3mf_colors(path: Path, out_png: Path) -> dict:
+    """Render a Bambu-painted 3MF (front and 3/4 views) in its filament colors.
+
+    Returns faces per filament color and the count of paint codes it couldn't map.
+    """
+    import json
+    import zipfile
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import PolyCollection
+
+    with zipfile.ZipFile(path) as z:
+        models = [n for n in z.namelist() if n.endswith(".model")]
+        data = max((z.read(n) for n in models), key=len)  # the mesh lives in the largest model file
+        try:
+            settings = json.loads(z.read("Metadata/project_settings.config"))
+            palette = [c[:7] for c in settings["filament_colour"]]
+        except (KeyError, ValueError):
+            palette = ["#888888"]
+    verts = np.array(re.findall(rb'<vertex x="([^"]+)" y="([^"]+)" z="([^"]+)"', data), dtype=float)
+    tris = re.findall(rb'<triangle v1="(\d+)" v2="(\d+)" v3="(\d+)"(?: paint_color="([^"]*)")?', data)
+    if not len(verts) or not tris:
+        raise ValueError(f"{path}: no mesh found")
+    faces = np.array([t[:3] for t in tris], dtype=int)
+    codes = [t[3].decode() for t in tris]
+    filament = np.array([BAMBU_PAINT_CODES.get(c, 0) for c in codes])
+    unknown = int((filament == 0).sum())
+    filament[(filament == 0) | (filament > len(palette))] = 1
+
+    rgb_palette = np.array([[int(p[i:i + 2], 16) / 255 for i in (1, 3, 5)] for p in palette])
+    colors = rgb_palette[filament - 1]
+    tri = verts[faces]
+    normals = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    normals /= np.linalg.norm(normals, axis=1, keepdims=True) + 1e-12
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 8))
+    for ax, angle, title in ((axes[0], 0, "Front (-Y)"), (axes[1], -35, "Front-left 3/4")):
+        a = np.radians(angle)
+        rot = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
+        t, n = tri @ rot.T, normals @ rot.T
+        facing = n[:, 1] < 0
+        light = np.clip(0.55 + 0.45 * (-n[:, 1] * 0.8 + n[:, 2] * 0.3), 0.35, 1)
+        order = np.argsort(-t[facing][:, :, 1].mean(axis=1))  # painter's algorithm, far to near
+        shaded = (colors[facing] * light[facing, None])[order]
+        ax.add_collection(PolyCollection(t[facing][order][:, :, [0, 2]], facecolors=shaded, edgecolors=shaded,
+                                         linewidths=0.2))
+        ax.autoscale()
+        ax.set_aspect("equal")
+        ax.set_title(title)
+        ax.axis("off")
+    fig.suptitle(f"{Path(path).name} in its filament colors")
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=100)
+    plt.close(fig)
+    counts = {f"{i}:{palette[i - 1]}": int((filament == i).sum()) for i in range(1, len(palette) + 1)}
+    return {"preview": str(out_png), "faces_per_filament": counts, "unknown_paint_codes": unknown}

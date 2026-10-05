@@ -102,8 +102,8 @@ def run_multicolor(
 ) -> dict:
     """Make a multi-color 3MF from a textured model. source is {"input_task_id": ...} or {"model_url": ...}.
 
-    The 3MF is Meshy's own file with slicer presets inside, so it is not rescaled here.
-    It is measured instead, and the slicer scale needed for the requested size is reported.
+    Meshy's 3MF has its own size. With size_mm, a scaled copy is written next to it
+    (vertex coordinates only, so paint colors and slicer settings are kept) and re-measured.
     """
     log(f"Creating multi-color 3MF ({MULTICOLOR_CREDITS} credits, up to {opts.max_colors} colors, {opts.style})")
     task = client.run_task(PRINT_MULTICOLOR, opts.payload(source), on_progress=on_progress)
@@ -126,11 +126,20 @@ def run_multicolor(
         ext = measured["extents"]
         current = ext[2] if size_axis == "height" else max(ext)
         if current > 0:
-            result["slicer_scale_percent"] = round(100 * size_mm / current, 1)
+            factor = size_mm / current
+            result["slicer_scale_percent"] = round(100 * factor, 1)
+            scaled = printprep.scale_3mf(path, out_dir / f"multicolor-{size_mm:g}mm.3mf", factor)
+            result["scaled_file"] = str(scaled)
+            result["scaled_measured"] = printprep.measure(scaled)
             result["scale_note"] = (
-                "Assumes the 3MF is Z-up in mm (the 3MF default). Scale uniformly in the slicer and "
-                "check the dimensions it shows."
+                f"scaled_file is Meshy's 3MF scaled by {factor:.4f} (assumes Z-up mm, the 3MF default); "
+                "check the size the slicer shows."
             )
+            path = scaled
+    try:
+        result["color_preview"] = printprep.render_3mf_colors(path, out_dir / "multicolor-colors.png")
+    except Exception as e:  # noqa: BLE001 - preview is best-effort
+        result["color_preview_error"] = str(e)
     try:
         preview = printprep.render_preview(printprep.load_mesh(path), out_dir / "multicolor-preview.png")
         result["preview"] = str(preview)
