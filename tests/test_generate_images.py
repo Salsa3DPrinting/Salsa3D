@@ -54,10 +54,10 @@ def test_generation_request_rejects_documented_conflicts(kwargs, match):
         images.generation_request("prompt", **kwargs)
 
 
-def test_estimates_use_endpoint_prices_and_multi_view_range():
+def test_estimates_use_endpoint_prices_and_multi_view_as_one_image():
     assert images.estimate_generation("/v1/text-to-image", "gpt-image-2", False) == (9, 9)
     assert images.estimate_generation("/v1/image-to-image", "gpt-image-2", False) == (12, 12)
-    assert images.estimate_generation("/v1/text-to-image", "nano-banana-2", True, count=2) == (12, 36)
+    assert images.estimate_generation("/v1/text-to-image", "nano-banana-2", True, count=2) == (12, 12)
 
 
 def test_generate_images_multi_view_saves_three_views_per_variant(tmp_path):
@@ -70,7 +70,7 @@ def test_generate_images_multi_view_saves_three_views_per_variant(tmp_path):
                      "gen-2-view1.png", "gen-2-view2.png", "gen-2-view3.png"]
     assert all(Path(Path(m["output_dir"]) / n).exists() for n in names)
     saved = json.loads((Path(m["output_dir"]) / "manifest.json").read_text())
-    assert saved["estimated_credits"] == [12, 36] and saved["tasks"][1]["task_id"] == "task-2"
+    assert saved["estimated_credits"] == [12, 12] and saved["tasks"][1]["task_id"] == "task-2"
 
 
 def test_image_task_feeds_3d_without_downloading(tmp_path):
@@ -88,7 +88,7 @@ def test_cli_generate_and_from_image_task_dry_runs(capsys, photos):
     assert main(["generate-image", "same object, three views", "--ref", photos[0], "--ref", photos[1],
                  "--multi-view", "--dry-run"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["endpoint"] == "/v1/image-to-image" and out["estimated_credits"] == [6, 18]
+    assert out["endpoint"] == "/v1/image-to-image" and out["estimated_credits"] == [6, 6]
     assert all(u.endswith("(truncated)") for u in out["request"]["reference_image_urls"])
     assert main(["image", "--from-image-task", "t-1", "--height-mm", "50", "--dry-run"]) == 0
     assert json.loads(capsys.readouterr().out)["request"]["input_task_id"] == "t-1"

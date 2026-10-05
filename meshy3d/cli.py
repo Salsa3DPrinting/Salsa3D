@@ -246,8 +246,8 @@ def _dispatch(args: argparse.Namespace) -> int:
             low, high = images.estimate_generation(endpoint, args.model, args.multi_view, args.count)
             _print_json({"endpoint": endpoint, "request": payload, "count": args.count,
                          "estimated_credits": [low, high],
-                         "note": "multi-view billing isn't documented; range covers 1-3 images" if args.multi_view
-                         else None})
+                         "note": "multi-view (3 views) observed billed as one image; not documented by Meshy"
+                         if args.multi_view else None})
             return 0
         _print_json(images.generate_images(
             MeshyClient(), args.prompt, args.model, args.ref, args.from_image_task, args.multi_view, args.aspect,

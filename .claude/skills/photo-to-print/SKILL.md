@@ -49,8 +49,8 @@ several subjects, or very thin shapes can make the task fail.
   the real object with the user.
 - **Combine references** (e.g. a shape from one photo, colors/label from another): up to 5 `--ref` images and a
   prompt that says what to take from each.
-Every image step is paid (3-12 credits per image; multi-view billing isn't documented, so estimates show a
-1-3x range). Dry-run first and confirm.
+Every image step is paid (3-12 credits per image). A multi-view task (3 views) was billed as one image when
+observed (not documented by Meshy). Dry-run first and confirm.
 
 ## 3. Presets: prototype, review, then build
 

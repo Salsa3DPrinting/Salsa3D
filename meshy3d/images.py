@@ -29,7 +29,6 @@ EDIT_MODEL_CREDITS = {
 # Text-to-image prices differ for the GPT models (https://docs.meshy.ai/api/text-to-image, 2026-10-05).
 TEXT_MODEL_CREDITS = {**EDIT_MODEL_CREDITS, "gpt-image-2": 9, "gpt-image-2-5-flare": 9, "gpt-image-2-5-sunburst": 9}
 MAX_REFERENCES = 5
-MULTI_VIEW_IMAGES = 3  # docs: a multi-view task returns three images
 POSE_MODES = ("a-pose", "t-pose")
 ASPECT_RATIOS = ("1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3")
 GPT_ONLY_RATIOS = ("3:2", "2:3")
@@ -120,10 +119,10 @@ def generation_request(
 
 
 def estimate_generation(endpoint: str, ai_model: str, multi_view: bool, count: int = 1) -> tuple[int, int]:
-    """(low, high) credits. Meshy prices per image but doesn't document how a 3-view task is billed,
-    so multi-view is estimated as anywhere from one image to three."""
+    """(low, high) credits. A multi-view task (3 images) is billed as one image: not in Meshy's docs,
+    but observed on 2026-10-05 (nano-banana-pro image-to-image multi-view task charged 9)."""
     price = (EDIT_MODEL_CREDITS if endpoint == IMAGE_TO_IMAGE else TEXT_MODEL_CREDITS)[ai_model]
-    return count * price, count * price * (MULTI_VIEW_IMAGES if multi_view else 1)
+    return count * price, count * price
 
 
 def generate_images(
