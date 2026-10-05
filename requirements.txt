@@ -1,0 +1,6 @@
+requests>=2.31
+trimesh>=4.5
+numpy>=1.26
+networkx>=3.0
+lxml>=5.0
+matplotlib>=3.8
