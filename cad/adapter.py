@@ -8,6 +8,8 @@ Fittings are given as text specs:
 - PVC pipe, size + schedule + spigot/socket:  "pvc-4-sch40-spigot", "4in sch40 pvc socket", "1-1/2 sch 40 pvc spigot"
   spigot = the adapter end goes INTO a PVC fitting's socket (it replaces a piece of pipe).
   socket = the adapter end slips OVER a PVC pipe, which stops on an inner ledge.
+- Tri-clamp (sanitary) ferrule by clamp size:  "triclamp-1.5", "1.5in tri-clamp"
+- NPT pipe thread, size + male/female:         "npt-2-male", "2in fnpt", "2\" npt female"
 
 Where the numbers come from:
 - BFS-i06 fan: the user's drawing plus answers (120 mm square frame, R15 corners, 75 mm deep, 4 x Ø12 holes
@@ -17,6 +19,11 @@ Where the numbers come from:
 - PVC socket depth: ASTM D2466 Schedule 40 fittings as listed in Charlotte Pipe's Sch 40 submittal
   (4": entrance 4.518 in, bottom 4.491 in, +/-0.009, depth 2.000 in). Sch 80 fittings (D2467) are not
   in the table yet.
+- NPT: ASME B1.20.1 basic dimensions (60 deg thread, taper 1:16 on diameter, thread height 0.8 x pitch,
+  crest and root truncated 0.033 x pitch). 2": 11.5 TPI, E0 2.26902 in, L1 0.436 in, L2 0.7565 in.
+- Tri-clamp 1.5": flange OD 1.984 in (50.4 mm) on 1.5 in (38.1 mm) tube. The 20 deg clamp bevel, rim
+  thickness and gasket groove are copied from the user's working BFS-i06 to 1.5in sanitary adapter
+  (groove centered on Ø43.6, 3.8 mm wide, 1.6 mm deep; Ø34.0 bore), not from a standard drawing.
 Change the constants below to correct any of them.
 
 Run: python -m cad.adapter bfs-i06 pvc-4-sch40-spigot [--out DIR] [--taper-deg 15]
@@ -61,6 +68,24 @@ SOCKET_STOP = 4.0                    # radial width of the ledge the pipe stops 
 FIT_TEST_RING_H = 12.0
 FIT_TEST_ALLOWANCES = (-0.1, -0.3, -0.5)
 
+# Tri-clamp ferrules: clamp size -> dimensions in mm (see the module docstring for sources).
+TRICLAMP = {
+    1.5: {"flange_od": 1.984 * IN, "tube_od": 1.5 * IN, "bore": 34.0, "rim_t": 2.84, "bevel_deg": 20.0,
+          "groove_center_d": 43.64, "groove_w": 3.8, "groove_depth": 1.59},
+}
+TRICLAMP_NECK = 10.0       # plain tube length behind the bevel, room for the clamp jaws
+
+# NPT, ASME B1.20.1: nominal size -> threads per inch, E0 (pitch dia at the small end of the external
+# thread), L1 (hand-tight engagement), L2 (effective thread length); inches.
+NPT = {2.0: {"tpi": 11.5, "E0": 2.26902, "L1": 0.436, "L2": 0.7565}}
+NPT_RADIAL_CLEARANCE = 0.1   # printed threads come out fat: male made this much smaller, female larger
+NPT_EXTRA_THREADS = 2        # thread length = L2 + this many pitches (male) / tapped depth (female)
+NPT_MALE_WALL = 3.0          # wall under the male thread roots
+NPT_FEMALE_WALL = 5.0        # wall outside the female thread majors
+NPT_COLLAR = 6.0             # plain section between the thread and the transition
+THREAD_SAMPLES_PER_PITCH = 24
+THREAD_SECTIONS = 360
+
 # Build volumes (X, Y, Z) of the user's printers, mm.
 PRINTERS = {"Bambu Lab P1S": (256, 256, 256), "Bambu Lab H2D": (350, 320, 325)}
 
@@ -104,6 +129,12 @@ class End:
     inner: list[tuple[float, float]]
     info: dict = field(default_factory=dict)
     fan: Fan | None = None
+    add: list[trimesh.Trimesh] = field(default_factory=list)   # extra solids (thread), same local frame: z = s
+    cut: list[trimesh.Trimesh] = field(default_factory=list)   # solids to remove (female thread, groove)
+
+    @property
+    def join_outer_r(self) -> float:
+        return self.outer[-1][0]
 
 
 def parse_size(text: str) -> float:
@@ -126,18 +157,36 @@ def parse_fitting(spec: str) -> End:
         if not style or not sched:
             raise ValueError(f"{spec!r}: PVC spec needs a schedule and spigot/socket, e.g. 'pvc-4-sch40-spigot'")
         rest = s[:sched.start()] + " " + s[sched.end():]
-        rest = re.sub(r"pvc|spigot|socket|inches|inch|in\b", " ", rest)
-        size_txt = " ".join(t for t in re.split(r"[\s-]+", rest) if t)
-        try:
-            size = parse_size(size_txt)
-        except (ValueError, ZeroDivisionError):
-            raise ValueError(f"{spec!r}: could not read a pipe size from {size_txt!r}") from None
+        size = size_from(spec, rest, r"pvc|spigot|socket")
         if size not in PIPE_OD_IN:
             raise ValueError(f"{spec!r}: no PVC data for {size} in; known sizes: {sorted(PIPE_OD_IN)}")
         if sched.group(1) != "40":
             raise ValueError(f"{spec!r}: only Schedule 40 socket depths are in the table so far")
         return pvc_end(size, style.group(1))
-    raise ValueError(f"Unknown fitting {spec!r}. Fans: {sorted(FANS)}; PVC like 'pvc-4-sch40-spigot'.")
+    if re.search(r"tri[\s-]*clamp|sanitary|\btc\b", s):
+        size = size_from(spec, s, r"tri[\s-]*clamp|sanitary|\btc\b|ferrule")
+        if size not in TRICLAMP:
+            raise ValueError(f"{spec!r}: no tri-clamp data for {size:g} in; known sizes: {sorted(TRICLAMP)}")
+        return triclamp_end(size)
+    if re.search(r"npt", s):
+        gender = re.search(r"\b(male|female|m(?=npt)|f(?=npt))", s)
+        if not gender:
+            raise ValueError(f"{spec!r}: say male or female, e.g. 'npt-2-male' (male = threads on the outside)")
+        size = size_from(spec, s, r"[mf]?npt|female|male")
+        if size not in NPT:
+            raise ValueError(f"{spec!r}: no NPT data for {size:g} in; known sizes: {sorted(NPT)}")
+        return npt_end(size, gender.group(1).startswith("m"))
+    raise ValueError(f"Unknown fitting {spec!r}. Fans: {sorted(FANS)}; PVC like 'pvc-4-sch40-spigot'; "
+                     "'triclamp-1.5'; 'npt-2-male'.")
+
+
+def size_from(spec: str, s: str, words: str) -> float:
+    rest = re.sub(words + r"|inches|inch|in\b", " ", s)
+    size_txt = " ".join(t for t in re.split(r"[\s-]+", rest) if t)
+    try:
+        return parse_size(size_txt)
+    except (ValueError, ZeroDivisionError):
+        raise ValueError(f"{spec!r}: could not read a size from {size_txt!r}") from None
 
 
 def fan_end(fan: Fan) -> End:
@@ -171,6 +220,116 @@ def pvc_end(size: float, style: str) -> End:
                      "stop_ledge_id": round(2 * ri_join, 2)})
 
 
+def triclamp_end(size: float) -> End:
+    d = TRICLAMP[size]
+    rf, rt, ri = d["flange_od"] / 2, d["tube_od"] / 2, d["bore"] / 2
+    s_bevel = d["rim_t"] + (rf - rt) * math.tan(math.radians(d["bevel_deg"]))
+    length = s_bevel + TRICLAMP_NECK
+    # Gasket groove: circular segment of the given width and depth, cut into the face (s = 0).
+    w, dep = d["groove_w"], d["groove_depth"]
+    rg = (w * w / 4 + dep * dep) / (2 * dep)
+    center_s = dep - rg
+    ang = np.linspace(0, 2 * np.pi, 64, endpoint=False)
+    circle = sg.Polygon(np.c_[d["groove_center_d"] / 2 + rg * np.cos(ang), center_s + rg * np.sin(ang)])
+    groove = trimesh.creation.revolve(np.array(circle.exterior.coords[::-1] if not circle.exterior.is_ccw
+                                               else circle.exterior.coords), sections=SECTIONS)
+    return End(f"{size:g} in tri-clamp ferrule", "triclamp", length, ri,
+               outer=[(rf, 0.0), (rf, d["rim_t"]), (rt, s_bevel), (rt, length)],
+               inner=[(ri, 0.0), (ri, length)], cut=[groove],
+               info={"flange_od": round(2 * rf, 2), "tube_od": round(2 * rt, 2), "bore": d["bore"],
+                     "groove_center_d": d["groove_center_d"], "groove_w": w, "groove_depth": dep,
+                     "bevel_deg": d["bevel_deg"]})
+
+
+def thread_radius(theta: np.ndarray, s: np.ndarray, pitch: float, r_pitch: np.ndarray) -> np.ndarray:
+    """Radius of a right-hand 60 deg thread surface, truncated to 0.8 x pitch, about the pitch radius."""
+    big_h = pitch * math.sqrt(3) / 2
+    trunc = (big_h - 0.8 * pitch) / 2
+    phase = np.mod(s / pitch - theta / (2 * np.pi), 1.0)
+    sharp = r_pitch - big_h / 2 + big_h * (1 - 2 * np.abs(phase - 0.5))
+    return np.clip(sharp, r_pitch - big_h / 2 + trunc, r_pitch + big_h / 2 - trunc)
+
+
+def threaded_tube(s0: float, s1: float, pitch: float, r_in, r_out) -> trimesh.Trimesh:
+    """Closed tube between radius functions r_in(theta, s) and r_out(theta, s) (arrays), z = s."""
+    n_t = THREAD_SECTIONS
+    n_s = max(2, math.ceil((s1 - s0) / pitch * THREAD_SAMPLES_PER_PITCH) + 1)
+    theta, s = np.meshgrid(np.linspace(0, 2 * np.pi, n_t, endpoint=False), np.linspace(s0, s1, n_s), indexing="ij")
+    verts = []
+    for r in (r_out(theta, s), r_in(theta, s)):
+        verts.append(np.stack([r * np.cos(theta), r * np.sin(theta), s], axis=-1).reshape(-1, 3))
+    verts = np.vstack(verts)
+    idx = np.arange(n_t * n_s).reshape(n_t, n_s)
+    inner_off = n_t * n_s
+    i, j = np.meshgrid(np.arange(n_t), np.arange(n_s - 1), indexing="ij")
+    a, b = idx[i, j], idx[(i + 1) % n_t, j]
+    c, d = idx[(i + 1) % n_t, j + 1], idx[i, j + 1]
+    quads = [np.stack([a, b, c, d], -1).reshape(-1, 4), np.stack([a, d, c, b], -1).reshape(-1, 4) + inner_off]
+    k = np.arange(n_t)
+    for col, flip in ((0, True), (n_s - 1, False)):
+        o0, o1 = idx[k, col], idx[(k + 1) % n_t, col]
+        q = np.stack([o0, o1, o1 + inner_off, o0 + inner_off], -1)
+        quads.append(q[:, ::-1] if flip else q)
+    quads = np.vstack(quads)
+    faces = np.vstack([quads[:, [0, 1, 2]], quads[:, [0, 2, 3]]])
+    mesh = trimesh.Trimesh(verts, faces, process=True)
+    mesh.fix_normals()
+    return mesh
+
+
+def npt_end(size: float, male: bool) -> End:
+    d = NPT[size]
+    p = IN / d["tpi"]
+    big_h = p * math.sqrt(3) / 2
+    trunc = (big_h - 0.8 * p) / 2
+    t_len = d["L2"] * IN + NPT_EXTRA_THREADS * p
+    length = t_len + NPT_COLLAR
+    c = NPT_RADIAL_CLEARANCE
+    label = f"{size:g} in NPT {'male' if male else 'female'}"
+    if male:
+        # s = 0 is the small end of the taper (the tip).
+        def r_pitch(s):
+            return (d["E0"] * IN + s / 16) / 2 - c
+
+        def root(s):
+            return r_pitch(s) - big_h / 2 + trunc
+
+        def major(s):
+            return r_pitch(s) + big_h / 2 - trunc
+
+        ri = root(0) - NPT_MALE_WALL
+        thread = threaded_tube(0.0, t_len + 0.5, p, lambda t, s: np.full_like(s, ri - 0.5),
+                               lambda t, s: np.minimum(thread_radius(t, s, p, r_pitch(s)), root(0) + 0.5 + s))
+        return End(label, "npt-male", length, ri,
+                   outer=[(root(0) - 0.3, 0.0), (root(t_len) - 0.3, t_len), (major(t_len), t_len),
+                          (major(t_len), length)],
+                   inner=[(ri, 0.0), (ri, length)], add=[thread],
+                   info={"tpi": d["tpi"], "major_d_at_tip": round(2 * major(0), 2),
+                         "major_d_at_thread_end": round(2 * major(t_len), 2), "thread_length": round(t_len, 2),
+                         "bore": round(2 * ri, 2), "radial_clearance": c})
+
+    # Female: s = 0 is the mouth, where the pitch diameter is E1 (hand-tight plane at the fitting face).
+    e1 = d["E0"] + d["L1"] / 16
+
+    def r_pitch(s):
+        return (e1 * IN - s / 16) / 2 + c
+
+    def minor(s):
+        return r_pitch(s) - big_h / 2 + trunc
+
+    def major(s):
+        return r_pitch(s) + big_h / 2 - trunc
+
+    ro = major(0) + NPT_FEMALE_WALL
+    ri = minor(t_len) - 0.5
+    core = threaded_tube(-1.0, t_len, p, lambda t, s: np.full_like(s, ri - 1.0),
+                         lambda t, s: np.maximum(thread_radius(t, s, p, r_pitch(s)), major(0) + 0.5 - s))
+    return End(label, "npt-female", length, ri, outer=[(ro, 0.0), (ro, length)],
+               inner=[(ri, 0.0), (ri, length)], cut=[core],
+               info={"tpi": d["tpi"], "major_d_at_mouth": round(2 * major(0), 2), "tapped_depth": round(t_len, 2),
+                     "outer_d": round(2 * ro, 2), "bore_below_thread": round(2 * ri, 2), "radial_clearance": c})
+
+
 def bolt_keepout_r(fan: Fan) -> float:
     return fan.bolt_circle_d / 2 - BOLT_KEEPOUT_D / 2
 
@@ -184,11 +343,12 @@ def layout(a: End, b: End, taper_deg: float) -> dict:
     if not 0 < taper_deg <= 45:
         raise ValueError("taper half-angle must be in (0, 45] degrees so the cone prints without support")
     ra, rb = a.join_inner_r, b.join_inner_r
-    taper_len = abs(rb - ra) / math.tan(math.radians(taper_deg))
+    oa, ob = a.join_outer_r, b.join_outer_r
+    taper_len = max(abs(rb - ra), abs(ob - oa)) / math.tan(math.radians(taper_deg))
     straight = 0.0
     if a.fan:
         # Keep bolt heads reachable: nothing wider than the keep-out radius in the first BOLT_ACCESS mm.
-        if max(ra, rb) + WALL > bolt_keepout_r(a.fan):
+        if max(oa, ob) > bolt_keepout_r(a.fan):
             straight = BOLT_ACCESS          # straight neck first, then the flare
         else:
             taper_len = max(taper_len, BOLT_ACCESS)
@@ -199,10 +359,32 @@ def layout(a: End, b: End, taper_deg: float) -> dict:
     def flip(pts):  # b's profile is measured from its face (at the top) downward
         return [(r, top - s) for r, s in reversed(pts)]
 
-    outer = list(a.outer) + [(ra + WALL, z_t0 + straight)] + flip(b.outer)
+    outer = list(a.outer) + [(oa, z_t0 + straight)] + flip(b.outer)
     inner = list(a.inner) + [(ra, z_t0 + straight)] + flip(b.inner)
     return {"a": a, "b": b, "outer": outer, "inner": inner, "z_transition": (z_t0, z_t1), "top": top,
-            "straight_neck": straight, "taper_len": taper_len}
+            "straight_neck": straight, "taper_len": taper_len, "b_transform": face_up(top)}
+
+
+def face_up(top: float) -> np.ndarray:
+    """Local end frame (face at z = 0, body toward +z) -> face at z = top, body below. A rotation, so
+    thread handedness is kept."""
+    m = trimesh.transformations.rotation_matrix(math.pi, [1, 0, 0])
+    m[2, 3] = top
+    return m
+
+
+def placed(meshes: list[trimesh.Trimesh], transform: np.ndarray | None) -> list[trimesh.Trimesh]:
+    out = [m.copy() for m in meshes]
+    if transform is not None:
+        for m in out:
+            m.apply_transform(transform)
+    return out
+
+
+def solid_from(outer, inner, adds, cuts, plate=None) -> trimesh.Trimesh:
+    solid = trimesh.boolean.union([revolve(outer), *adds, *([plate] if plate is not None else [])], engine="manifold")
+    inner = [(inner[0][0], inner[0][1] - 1.0)] + list(inner) + [(inner[-1][0], inner[-1][1] + 1.0)]
+    return trimesh.boolean.difference([solid, revolve(inner), *cuts], engine="manifold")
 
 
 def revolve(profile: list[tuple[float, float]]) -> trimesh.Trimesh:
@@ -228,13 +410,9 @@ def flange_plate(fan: Fan) -> trimesh.Trimesh:
 
 def build(a_spec: str, b_spec: str, taper_deg: float = TAPER_HALF_ANGLE) -> tuple[trimesh.Trimesh, dict]:
     lay = layout(parse_fitting(a_spec), parse_fitting(b_spec), taper_deg)
-    a = lay["a"]
-    solid = revolve(lay["outer"])
-    if a.fan:
-        solid = trimesh.boolean.union([solid, flange_plate(a.fan)], engine="manifold")
-    inner = list(lay["inner"])
-    inner = [(inner[0][0], inner[0][1] - 1.0)] + inner + [(inner[-1][0], inner[-1][1] + 1.0)]
-    mesh = trimesh.boolean.difference([solid, revolve(inner)], engine="manifold")
+    a, b, tb = lay["a"], lay["b"], lay["b_transform"]
+    mesh = solid_from(lay["outer"], lay["inner"], placed(a.add, None) + placed(b.add, tb),
+                      placed(a.cut, None) + placed(b.cut, tb), flange_plate(a.fan) if a.fan else None)
     return mesh, lay
 
 
@@ -261,7 +439,9 @@ def check(mesh: trimesh.Trimesh, lay: dict) -> dict:
         "overall_length_mm": round(lay["top"], 2), "overall_length_in": round(lay["top"] / IN, 2),
         "transition": {"from_id": round(2 * a.join_inner_r, 2), "to_id": round(2 * b.join_inner_r, 2),
                        "straight_neck": round(lay["straight_neck"], 2), "taper_length": round(lay["taper_len"], 2),
-                       "z": [round(z_t0, 2), round(z_t1, 2)], "wall": WALL},
+                       "z": [round(z_t0, 2), round(z_t1, 2)],
+                       "wall_at_ends": [round(a.join_outer_r - a.join_inner_r, 2),
+                                        round(b.join_outer_r - b.join_inner_r, 2)]},
         "extents_mm": ext, "watertight": bool(mesh.is_watertight), "bodies": len(mesh.split(only_watertight=False)),
         "volume_cm3": round(float(mesh.volume) / 1000, 1), "warnings": [],
     }
@@ -289,8 +469,14 @@ def check(mesh: trimesh.Trimesh, lay: dict) -> dict:
     return rep
 
 
-def fit_test_rings(b: End) -> list[tuple[str, trimesh.Trimesh]]:
-    """Short spigot rings at a few OD allowances, to press into a real fitting before printing the adapter."""
+def fit_test_pieces(b: End) -> list[tuple[str, trimesh.Trimesh]]:
+    """Cheap prints to try against the real fitting before printing the adapter: spigot rings at a few OD
+    allowances, or the thread / ferrule end on its own (face up, as on the adapter)."""
+    if b.kind in ("npt-male", "npt-female", "triclamp"):
+        tf = face_up(b.length)
+        return [(f"fit-test-{slug(b.label)}", solid_from([(r, b.length - s) for r, s in reversed(b.outer)],
+                                                         [(r, b.length - s) for r, s in reversed(b.inner)],
+                                                         placed(b.add, tf), placed(b.cut, tf)))]
     if b.kind != "spigot":
         return []
     rings = []
@@ -321,9 +507,10 @@ def render_section(mesh: trimesh.Trimesh, lay: dict, path: Path, title: str) -> 
                       (lay["top"] - 1.0, 2 * b.join_inner_r, f"ID {2 * b.join_inner_r:.1f}")]:
         ax.annotate("", (-d / 2, z), (d / 2, z), arrowprops={"arrowstyle": "<->", "color": "#c0392b"})
         ax.text(0, z + 2, txt, ha="center", color="#c0392b", fontsize=9)
-    od = b.info.get("spigot_od") or b.info.get("socket_id")
-    if od:
-        title += f"\n{b.kind} {'OD' if b.kind == 'spigot' else 'ID'} {od:.2f} mm"
+    key = {"spigot": "spigot_od", "socket": "socket_id", "triclamp": "flange_od", "npt-male": "major_d_at_tip",
+           "npt-female": "major_d_at_mouth"}.get(b.kind)
+    if key:
+        title += f"\n{key.replace('_', ' ')} {b.info[key]:.2f} mm"
     ax.axhline(0, color="#c0392b", lw=1.5)
     ax.set_aspect("equal")
     ax.grid(alpha=0.3)
@@ -355,7 +542,7 @@ def main(argv: list[str] | None = None) -> int:
     title = f"{lay['a'].label} to {lay['b'].label}"
     files.append(printprep.render_preview(mesh, out / f"{stem}-preview.png"))
     files.append(render_section(mesh, lay, out / f"{stem}-section.png", title))
-    for name, ring in fit_test_rings(lay["b"]):
+    for name, ring in fit_test_pieces(lay["b"]):
         files += printprep.export(ring, out, name, ["stl"])
     report["files"] = [str(f) for f in files]
     (out / "report.json").write_text(json.dumps(report, indent=2))

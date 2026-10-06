@@ -124,3 +124,44 @@ def test_adapter_parse_and_contraction():
     assert lay["a"].kind == "fan"
     assert mesh.is_watertight
     assert lay["taper_len"] == pytest.approx((50 - lay["b"].join_inner_r) / np.tan(np.radians(adapter.TAPER_HALF_ANGLE)))
+
+
+def _crest_angle(mesh, z, outer):
+    loops = mesh.section(plane_origin=[0, 0, z], plane_normal=[0, 0, 1]).discrete
+    pick = max if outer else min
+    loop = pick(loops, key=lambda e: np.hypot(e[:, 0], e[:, 1]).max())
+    r = np.hypot(loop[:, 0], loop[:, 1])
+    crest = loop[r > r.max() - 0.05]  # the truncated crest/root is a short flat: take its middle
+    return np.degrees(np.arctan2(crest[:, 1].mean(), crest[:, 0].mean()))
+
+
+@pytest.mark.parametrize("spec,male", [("npt-2-male", True), ("2in fnpt", False)])
+def test_adapter_npt_thread_end(spec, male):
+    from cad import adapter
+
+    end = adapter.parse_fitting(spec)
+    assert end.kind == ("npt-male" if male else "npt-female")
+    ((_, piece),) = adapter.fit_test_pieces(end)
+    assert piece.is_watertight and len(piece.split(only_watertight=False)) == 1
+    top = piece.bounds[1][2]
+    pitch = 25.4 / 11.5
+    # Right-hand thread: the crest angle advances +360 deg per pitch going up (face at the top).
+    z = top - 10
+    step = np.mod(_crest_angle(piece, z + 0.5, male) - _crest_angle(piece, z, male), 360)
+    assert step == pytest.approx(0.5 / pitch * 360, abs=3)
+    if male:
+        # Major diameter at the tip: E0 + 0.8 p, less the print clearance.
+        assert end.info["major_d_at_tip"] == pytest.approx(2.26902 * 25.4 + 0.8 * pitch - 2 * adapter.NPT_RADIAL_CLEARANCE,
+                                                          abs=0.01)
+
+
+def test_adapter_triclamp_end():
+    from cad import adapter
+
+    mesh, lay = adapter.build("bfs-i06", "1.5in tri-clamp")
+    assert mesh.is_watertight and len(mesh.split(only_watertight=False)) == 1
+    top = lay["top"]
+    assert mesh.extents[2] == pytest.approx(top)
+    assert not mesh.contains([[43.64 / 2, 0, top - 0.8]])[0]  # gasket groove
+    assert mesh.contains([[25.0, 0, top - 1.0]])[0]           # flange rim, Ø50.4
+    assert not mesh.contains([[25.0, 0, top - 8.0]])[0]       # behind the bevel: clamp room

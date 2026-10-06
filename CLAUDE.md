@@ -19,8 +19,9 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
   each file are the dimensions; output goes to `output/cad-<name>/` with a color render, print preview and checks
   (watertight parts, no overlaps between colors).
 - `cad/adapter.py`: duct adapters between two fittings from text specs, e.g.
-  `python -m cad.adapter bfs-i06 pvc-4-sch40-spigot`. Fans in `FANS`, PVC Sch 40 spigot/socket from pipe-OD and
-  socket-depth tables; writes STL/3MF, section render, PVC fit-test rings and `report.json` (bolt access, bed fit).
+  `python -m cad.adapter bfs-i06 pvc-4-sch40-spigot`. Fans in `FANS`, PVC Sch 40 spigot/socket, tri-clamp
+  ferrules (`TRICLAMP`), NPT male/female threads (`NPT`, ASME B1.20.1); writes STL/3MF, section render,
+  fit-test prints and `report.json` (bolt access, bed fit).
 - `cad/figure_base.py`: put a painted multi-color figure 3MF on a plain CAD base (extra filament slot), filling
   small gaps under floating features. `bambu3mf.repaint` rewrites per-triangle paint codes (e.g. recolor a region).
 - `tests/`: offline tests against a fake Meshy API (`tests/fakes.py`). No key or credits needed.
