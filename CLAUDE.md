@@ -26,6 +26,8 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
 - `cad/adapter_app/`: local web app for the adapter generator (`python -m cad.adapter_app`), stdlib HTTP server on
   127.0.0.1 + static page with a three.js viewer (vendored). Fan form writes the user library. `packaging/` +
   `.github/workflows/adapter-windows.yml` build `SalsaAdapter.exe` (PyInstaller) on a Windows runner.
+- `docs/adapter-tool-handoff/`: spec + JSON (data, test vectors, API examples) for porting the adapter tool into the
+  Application Engineering Toolbox. Regenerate the JSON with `python -m cad.adapter_export` after changing the generator.
 - `cad/figure_base.py`: put a painted multi-color figure 3MF on a plain CAD base (extra filament slot), filling
   small gaps under floating features. `bambu3mf.repaint` rewrites per-triangle paint codes (e.g. recolor a region).
 - `tests/`: offline tests against a fake Meshy API (`tests/fakes.py`). No key or credits needed.

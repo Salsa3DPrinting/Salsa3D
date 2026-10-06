@@ -1,0 +1,528 @@
+{
+  "generator_version": "1.0",
+  "units": "mm unless the key ends in _in (inches) or _deg (degrees)",
+  "sources": {
+    "pipe_od_in": "ASTM D1785 / NPS standard pipe outside diameters (also D in the NPT formulas).",
+    "pvc_sch40_socket_depth_in": "ASTM D2466 Schedule 40 socket depth, as listed in Charlotte Pipe's Sch 40 PVC submittal (4 in: entrance 4.518, bottom 4.491, +/-0.009, depth 2.000).",
+    "npt": "ASME B1.20.1. tpi and L1 (hand-tight engagement) from the standard's table; E0 = D - (0.05 D + 1.1) p and L2 = (0.8 D + 6.8) p are the standard's formulas (they reproduce the tabulated values).",
+    "triclamp": "Flange OD, tube OD and tube ID from the common tri-clamp sizing chart; gasket bead diameter from tri-clamp gasket dimension charts (1.5 in = 1.718 in, which matches the groove on the user's working adapter exactly).",
+    "triclamp_profile": "NOT from a standard: rim thickness, 20 deg bevel and groove cross-section measured on the user's working BFS-i06 to 1.5 in tri-clamp adapter, applied to every size. Fit-test first.",
+    "fans": "bfs-i06 from the manufacturer drawing plus the user's answers; hub plate diameter (70 mm) assumed."
+  },
+  "constants": {
+    "flange_t": 10.0,
+    "bolt_access": 30.0,
+    "bolt_keepout_factor": 2.0,
+    "hub_clearance": 1.0,
+    "spigot_extra": 6.35,
+    "spigot_chamfer": 1.0,
+    "socket_stop": 4.0,
+    "fit_test_ring_h": 12.0,
+    "fit_test_steps": [
+      0.2,
+      0.0,
+      -0.2
+    ],
+    "triclamp_profile": {
+      "rim_t": 2.84,
+      "bevel_deg": 20.0,
+      "groove_w": 3.8,
+      "groove_depth": 1.59
+    },
+    "triclamp_min_wall": 2.0,
+    "triclamp_neck": 10.0,
+    "npt_fine_tpi": 18,
+    "npt_extra_threads": 2,
+    "npt_male_wall": 3.0,
+    "npt_female_wall": 5.0,
+    "npt_collar": 6.0
+  },
+  "options": {
+    "defaults": {
+      "taper_deg": 15.0,
+      "wall": 3.5,
+      "spigot_allowance": -0.3,
+      "socket_clearance": 0.5,
+      "npt_clearance": 0.1
+    },
+    "limits": {
+      "taper_deg": [
+        0,
+        45,
+        "exclusive min"
+      ],
+      "wall": [
+        1.2,
+        10
+      ],
+      "spigot_allowance": [
+        -2,
+        1
+      ],
+      "socket_clearance": [
+        0,
+        3
+      ],
+      "npt_clearance": [
+        0,
+        0.5
+      ]
+    }
+  },
+  "tables": {
+    "pipe_od_in": {
+      "1/8": 0.405,
+      "1/4": 0.54,
+      "3/8": 0.675,
+      "1/2": 0.84,
+      "3/4": 1.05,
+      "1": 1.315,
+      "1-1/4": 1.66,
+      "1-1/2": 1.9,
+      "2": 2.375,
+      "2-1/2": 2.875,
+      "3": 3.5,
+      "4": 4.5,
+      "6": 6.625,
+      "8": 8.625,
+      "10": 10.75,
+      "12": 12.75
+    },
+    "pvc_sch40_socket_depth_in": {
+      "1/2": 0.688,
+      "3/4": 0.719,
+      "1": 0.875,
+      "1-1/4": 0.938,
+      "1-1/2": 1.094,
+      "2": 1.156,
+      "2-1/2": 1.75,
+      "3": 1.875,
+      "4": 2.0,
+      "6": 3.0,
+      "8": 4.0,
+      "10": 5.0,
+      "12": 6.0
+    },
+    "npt": {
+      "1/8": {
+        "tpi": 27,
+        "L1_in": 0.1615
+      },
+      "1/4": {
+        "tpi": 18,
+        "L1_in": 0.2278
+      },
+      "3/8": {
+        "tpi": 18,
+        "L1_in": 0.24
+      },
+      "1/2": {
+        "tpi": 14,
+        "L1_in": 0.32
+      },
+      "3/4": {
+        "tpi": 14,
+        "L1_in": 0.339
+      },
+      "1": {
+        "tpi": 11.5,
+        "L1_in": 0.4
+      },
+      "1-1/4": {
+        "tpi": 11.5,
+        "L1_in": 0.42
+      },
+      "1-1/2": {
+        "tpi": 11.5,
+        "L1_in": 0.42
+      },
+      "2": {
+        "tpi": 11.5,
+        "L1_in": 0.436
+      },
+      "2-1/2": {
+        "tpi": 8,
+        "L1_in": 0.682
+      },
+      "3": {
+        "tpi": 8,
+        "L1_in": 0.766
+      },
+      "4": {
+        "tpi": 8,
+        "L1_in": 0.844
+      }
+    },
+    "triclamp": {
+      "1-1/2": {
+        "flange_od_in": 1.984,
+        "tube_od_in": 1.5,
+        "tube_id_in": 1.37,
+        "gasket_bead_d_in": 1.718
+      },
+      "2": {
+        "flange_od_in": 2.516,
+        "tube_od_in": 2.0,
+        "tube_id_in": 1.87,
+        "gasket_bead_d_in": 2.218
+      },
+      "2-1/2": {
+        "flange_od_in": 3.047,
+        "tube_od_in": 2.5,
+        "tube_id_in": 2.37,
+        "gasket_bead_d_in": 2.781
+      },
+      "3": {
+        "flange_od_in": 3.579,
+        "tube_od_in": 3.0,
+        "tube_id_in": 2.87,
+        "gasket_bead_d_in": 3.281
+      },
+      "4": {
+        "flange_od_in": 4.682,
+        "tube_od_in": 4.0,
+        "tube_id_in": 3.83,
+        "gasket_bead_d_in": 4.345
+      },
+      "6": {
+        "flange_od_in": 6.57,
+        "tube_od_in": 6.0,
+        "tube_id_in": 5.78,
+        "gasket_bead_d_in": 6.176
+      }
+    }
+  },
+  "printers": {
+    "Bambu Lab P1S": [
+      256,
+      256,
+      256
+    ],
+    "Bambu Lab H2D": [
+      350,
+      320,
+      325
+    ]
+  },
+  "fittings": {
+    "pvc-spigot": {
+      "label": "PVC Sch 40 spigot (goes into a PVC fitting)",
+      "sizes": [
+        {
+          "size": "1/2",
+          "spec": "pvc-1/2-sch40-spigot"
+        },
+        {
+          "size": "3/4",
+          "spec": "pvc-3/4-sch40-spigot"
+        },
+        {
+          "size": "1",
+          "spec": "pvc-1-sch40-spigot"
+        },
+        {
+          "size": "1-1/4",
+          "spec": "pvc-1-1/4-sch40-spigot"
+        },
+        {
+          "size": "1-1/2",
+          "spec": "pvc-1-1/2-sch40-spigot"
+        },
+        {
+          "size": "2",
+          "spec": "pvc-2-sch40-spigot"
+        },
+        {
+          "size": "2-1/2",
+          "spec": "pvc-2-1/2-sch40-spigot"
+        },
+        {
+          "size": "3",
+          "spec": "pvc-3-sch40-spigot"
+        },
+        {
+          "size": "4",
+          "spec": "pvc-4-sch40-spigot"
+        },
+        {
+          "size": "6",
+          "spec": "pvc-6-sch40-spigot"
+        },
+        {
+          "size": "8",
+          "spec": "pvc-8-sch40-spigot"
+        },
+        {
+          "size": "10",
+          "spec": "pvc-10-sch40-spigot"
+        },
+        {
+          "size": "12",
+          "spec": "pvc-12-sch40-spigot"
+        }
+      ]
+    },
+    "pvc-socket": {
+      "label": "PVC Sch 40 socket (slips over a PVC pipe)",
+      "sizes": [
+        {
+          "size": "1/2",
+          "spec": "pvc-1/2-sch40-socket"
+        },
+        {
+          "size": "3/4",
+          "spec": "pvc-3/4-sch40-socket"
+        },
+        {
+          "size": "1",
+          "spec": "pvc-1-sch40-socket"
+        },
+        {
+          "size": "1-1/4",
+          "spec": "pvc-1-1/4-sch40-socket"
+        },
+        {
+          "size": "1-1/2",
+          "spec": "pvc-1-1/2-sch40-socket"
+        },
+        {
+          "size": "2",
+          "spec": "pvc-2-sch40-socket"
+        },
+        {
+          "size": "2-1/2",
+          "spec": "pvc-2-1/2-sch40-socket"
+        },
+        {
+          "size": "3",
+          "spec": "pvc-3-sch40-socket"
+        },
+        {
+          "size": "4",
+          "spec": "pvc-4-sch40-socket"
+        },
+        {
+          "size": "6",
+          "spec": "pvc-6-sch40-socket"
+        },
+        {
+          "size": "8",
+          "spec": "pvc-8-sch40-socket"
+        },
+        {
+          "size": "10",
+          "spec": "pvc-10-sch40-socket"
+        },
+        {
+          "size": "12",
+          "spec": "pvc-12-sch40-socket"
+        }
+      ]
+    },
+    "npt-male": {
+      "label": "NPT male (threads on the outside)",
+      "sizes": [
+        {
+          "size": "1/8",
+          "spec": "npt-1/8-male"
+        },
+        {
+          "size": "1/4",
+          "spec": "npt-1/4-male"
+        },
+        {
+          "size": "3/8",
+          "spec": "npt-3/8-male"
+        },
+        {
+          "size": "1/2",
+          "spec": "npt-1/2-male"
+        },
+        {
+          "size": "3/4",
+          "spec": "npt-3/4-male"
+        },
+        {
+          "size": "1",
+          "spec": "npt-1-male"
+        },
+        {
+          "size": "1-1/4",
+          "spec": "npt-1-1/4-male"
+        },
+        {
+          "size": "1-1/2",
+          "spec": "npt-1-1/2-male"
+        },
+        {
+          "size": "2",
+          "spec": "npt-2-male"
+        },
+        {
+          "size": "2-1/2",
+          "spec": "npt-2-1/2-male"
+        },
+        {
+          "size": "3",
+          "spec": "npt-3-male"
+        },
+        {
+          "size": "4",
+          "spec": "npt-4-male"
+        }
+      ]
+    },
+    "npt-female": {
+      "label": "NPT female (threads on the inside)",
+      "sizes": [
+        {
+          "size": "1/8",
+          "spec": "npt-1/8-female"
+        },
+        {
+          "size": "1/4",
+          "spec": "npt-1/4-female"
+        },
+        {
+          "size": "3/8",
+          "spec": "npt-3/8-female"
+        },
+        {
+          "size": "1/2",
+          "spec": "npt-1/2-female"
+        },
+        {
+          "size": "3/4",
+          "spec": "npt-3/4-female"
+        },
+        {
+          "size": "1",
+          "spec": "npt-1-female"
+        },
+        {
+          "size": "1-1/4",
+          "spec": "npt-1-1/4-female"
+        },
+        {
+          "size": "1-1/2",
+          "spec": "npt-1-1/2-female"
+        },
+        {
+          "size": "2",
+          "spec": "npt-2-female"
+        },
+        {
+          "size": "2-1/2",
+          "spec": "npt-2-1/2-female"
+        },
+        {
+          "size": "3",
+          "spec": "npt-3-female"
+        },
+        {
+          "size": "4",
+          "spec": "npt-4-female"
+        }
+      ]
+    },
+    "triclamp": {
+      "label": "Tri-clamp ferrule",
+      "sizes": [
+        {
+          "size": "1-1/2",
+          "spec": "triclamp-1-1/2"
+        },
+        {
+          "size": "2",
+          "spec": "triclamp-2"
+        },
+        {
+          "size": "2-1/2",
+          "spec": "triclamp-2-1/2"
+        },
+        {
+          "size": "3",
+          "spec": "triclamp-3"
+        },
+        {
+          "size": "4",
+          "spec": "triclamp-4"
+        },
+        {
+          "size": "6",
+          "spec": "triclamp-6"
+        }
+      ]
+    }
+  },
+  "fan_fields": {
+    "frame": {
+      "label": "Frame size",
+      "help": "Outside width of the square frame",
+      "min": 20,
+      "max": 400
+    },
+    "corner_r": {
+      "label": "Corner radius",
+      "help": "Radius of the frame's rounded corners (0 for sharp)",
+      "min": 0,
+      "max": 200
+    },
+    "depth": {
+      "label": "Fan depth",
+      "help": "Overall thickness of the fan, face to face (for reference)",
+      "min": 5,
+      "max": 400
+    },
+    "bolt_circle_d": {
+      "label": "Bolt circle diameter",
+      "help": "Circle through the 4 hole centers",
+      "min": 10,
+      "max": 600
+    },
+    "hole_d": {
+      "label": "Hole diameter",
+      "help": "Mounting hole diameter",
+      "min": 1,
+      "max": 40
+    },
+    "bore_d": {
+      "label": "Air opening diameter",
+      "help": "Round opening on the frame face the air flows through",
+      "min": 10,
+      "max": 400
+    },
+    "hub_d": {
+      "label": "Hub plate diameter",
+      "help": "Motor hub plate that sticks out of one face (0 if flush)",
+      "min": 0,
+      "max": 400
+    },
+    "hub_proud": {
+      "label": "Hub plate height",
+      "help": "How far the hub plate sticks out past the frame face (0 if flush)",
+      "min": 0,
+      "max": 50
+    }
+  },
+  "builtin_fans": [
+    {
+      "id": "bfs-i06",
+      "name": "BFS-i06 120 x 75 mm fan",
+      "frame": 120.0,
+      "corner_r": 15.0,
+      "depth": 75.0,
+      "bolt_circle_d": 138.0,
+      "hole_d": 12.0,
+      "bore_d": 100.0,
+      "hub_d": 70.0,
+      "hub_proud": 7.9,
+      "verified": true,
+      "added_by": "built-in",
+      "notes": "From the manufacturer drawing; 4 x 12 mm holes at 45 deg on a 138 mm circle. Hub plate diameter not on the drawing, 70 mm assumed.",
+      "added_on": "",
+      "builtin": true,
+      "hole_spacing": 97.58
+    }
+  ]
+}

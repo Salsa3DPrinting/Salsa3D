@@ -1,0 +1,120 @@
+{
+  "generate_request": {
+    "a": "bfs-i06",
+    "b": "pvc-4-sch40-spigot",
+    "options": {
+      "taper_deg": 15
+    }
+  },
+  "generate_response": {
+    "generator_version": "1.0",
+    "options": {
+      "taper_deg": 15.0,
+      "wall": 3.5,
+      "spigot_allowance": -0.3,
+      "socket_clearance": 0.5,
+      "npt_clearance": 0.1
+    },
+    "fittings": {
+      "bottom (on bed)": {
+        "name": "BFS-i06 120 x 75 mm fan",
+        "fan_id": "bfs-i06",
+        "bore_d": 100.0,
+        "flange_t": 10.0,
+        "frame": 120.0,
+        "bolt_circle_d": 138.0,
+        "hole_d": 12.0,
+        "holes": 4
+      },
+      "top": {
+        "name": "4 in Sch 40 PVC spigot",
+        "pipe_od": 114.3,
+        "spigot_od": 114.0,
+        "spigot_id": 107.0,
+        "spigot_length": 57.15,
+        "fitting_socket_depth": 50.8
+      }
+    },
+    "overall_length_mm": 97.15,
+    "overall_length_in": 3.82,
+    "transition": {
+      "from_id": 100.0,
+      "to_id": 107.0,
+      "straight_neck": 0.0,
+      "taper_length": 30.0,
+      "z": [
+        10.0,
+        40.0
+      ],
+      "wall_at_ends": [
+        3.5,
+        3.5
+      ]
+    },
+    "extents_mm": [
+      120.0,
+      120.0,
+      97.15
+    ],
+    "watertight": true,
+    "bodies": 1,
+    "volume_cm3": 163.6,
+    "warnings": [],
+    "bolt_access": {
+      "keepout_r": 57.0,
+      "max_outer_r_in_zone": 57.0,
+      "zone_height": 30.0,
+      "ok": true,
+      "pvc_fitting_mouth_z": 46.35
+    },
+    "hub_clearance": {
+      "hub_d_assumed": 70.0,
+      "bore_d_at_face": 100.0,
+      "ok": true
+    },
+    "fits_bed": {
+      "Bambu Lab P1S": true,
+      "Bambu Lab H2D": true
+    },
+    "title": "BFS-i06 120 x 75 mm fan to 4 in Sch 40 PVC spigot",
+    "stem": "bfs-i06-120-x-75-mm-fan-to-4-in-sch-40-pvc-spigot",
+    "files": [
+      "bfs-i06-120-x-75-mm-fan-to-4-in-sch-40-pvc-spigot.stl",
+      "bfs-i06-120-x-75-mm-fan-to-4-in-sch-40-pvc-spigot.3mf",
+      "bfs-i06-120-x-75-mm-fan-to-4-in-sch-40-pvc-spigot-preview.png",
+      "bfs-i06-120-x-75-mm-fan-to-4-in-sch-40-pvc-spigot-section.png",
+      "fit-ring-od114.20.stl",
+      "fit-ring-od114.00.stl",
+      "fit-ring-od113.80.stl"
+    ],
+    "job": "20261006-142126-bfs-i06-to-pvc-4-sch40-spigot",
+    "folder": "C:\\Users\\<you>\\AppData\\Roaming\\SalsaAdapter\\output\\20261006-142126-bfs-i06-to-pvc-4-sch40-spigot"
+  },
+  "generate_error": {
+    "error": "'pvc-5-sch40-spigot': no PVC data for 5 in; known sizes: 1/2, 3/4, 1, 1-1/4, 1-1/2, 2, 2-1/2, 3, 4, 6, 8, 10, 12"
+  },
+  "add_fan_request": {
+    "fan": {
+      "name": "ACME 80 x 25",
+      "frame": 80,
+      "corner_r": 5,
+      "depth": 25,
+      "hole_d": 4.5,
+      "bore_d": 76,
+      "hub_d": 30,
+      "hub_proud": 0,
+      "hole_spacing": 71.5,
+      "bolt_circle_d": "",
+      "added_by": "J. Smith",
+      "notes": "Datasheet rev B",
+      "verified": false
+    },
+    "overwrite": false
+  },
+  "add_fan_errors": {
+    "errors": [
+      "Air opening must be smaller than the frame.",
+      "Holes are too close to the air opening to leave room for the adapter wall."
+    ]
+  }
+}

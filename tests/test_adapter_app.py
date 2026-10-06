@@ -93,3 +93,13 @@ def test_api_flow(app):
     assert call(f"{url}/api/jobs/..%2F/fans.json")[0] == 404
     # Requests from another site's page are refused.
     assert call(url + "/api/fans/delete", {"id": "test-80-fan"}, {"Origin": "http://evil.example"})[0] == 403
+
+
+def test_handoff_data_is_current():
+    """docs/adapter-tool-handoff/adapter-data.json must match the code; regenerate with python -m cad.adapter_export."""
+    from pathlib import Path
+
+    from cad import adapter_export
+
+    path = Path(__file__).parent.parent / adapter_export.OUT / "adapter-data.json"
+    assert json.loads(path.read_text(encoding="utf-8")) == json.loads(json.dumps(adapter_export.data()))

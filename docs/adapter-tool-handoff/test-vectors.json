@@ -1,0 +1,698 @@
+[
+  {
+    "input": {
+      "a": "bfs-i06",
+      "b": "pvc-4-sch40-spigot",
+      "options": {}
+    },
+    "expect": {
+      "bottom": "BFS-i06 120 x 75 mm fan",
+      "top": "4 in Sch 40 PVC spigot",
+      "overall_length_mm": 97.15,
+      "transition": {
+        "from_id": 100.0,
+        "to_id": 107.0,
+        "straight_neck": 0.0,
+        "taper_length": 30.0
+      },
+      "bottom_info": {
+        "fan_id": "bfs-i06",
+        "bore_d": 100.0,
+        "flange_t": 10.0,
+        "frame": 120.0,
+        "bolt_circle_d": 138.0,
+        "hole_d": 12.0,
+        "holes": 4
+      },
+      "top_info": {
+        "pipe_od": 114.3,
+        "spigot_od": 114.0,
+        "spigot_id": 107.0,
+        "spigot_length": 57.15,
+        "fitting_socket_depth": 50.8
+      },
+      "warnings": [],
+      "outer_profile": [
+        [
+          53.5,
+          0.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          57.0,
+          40.0
+        ],
+        [
+          57.0,
+          96.15
+        ],
+        [
+          56.0,
+          97.15
+        ]
+      ],
+      "inner_profile": [
+        [
+          50.0,
+          0.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          53.5,
+          40.0
+        ],
+        [
+          53.5,
+          97.15
+        ]
+      ]
+    }
+  },
+  {
+    "input": {
+      "a": "bfs-i06",
+      "b": "pvc-1-1/2-sch40-socket",
+      "options": {}
+    },
+    "expect": {
+      "bottom": "BFS-i06 120 x 75 mm fan",
+      "top": "1-1/2 in Sch 40 PVC socket",
+      "overall_length_mm": 152.76,
+      "transition": {
+        "from_id": 100.0,
+        "to_id": 40.26,
+        "straight_neck": 0.0,
+        "taper_length": 111.48
+      },
+      "bottom_info": {
+        "fan_id": "bfs-i06",
+        "bore_d": 100.0,
+        "flange_t": 10.0,
+        "frame": 120.0,
+        "bolt_circle_d": 138.0,
+        "hole_d": 12.0,
+        "holes": 4
+      },
+      "top_info": {
+        "pipe_od": 48.26,
+        "socket_id": 48.76,
+        "socket_depth": 27.79,
+        "stop_ledge_id": 40.26
+      },
+      "warnings": [],
+      "outer_profile": [
+        [
+          53.5,
+          0.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          27.88,
+          121.476
+        ],
+        [
+          27.88,
+          152.764
+        ]
+      ],
+      "inner_profile": [
+        [
+          50.0,
+          0.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          20.13,
+          121.476
+        ],
+        [
+          20.13,
+          124.976
+        ],
+        [
+          24.38,
+          124.976
+        ],
+        [
+          24.38,
+          152.764
+        ]
+      ]
+    }
+  },
+  {
+    "input": {
+      "a": "bfs-i06",
+      "b": "pvc-6-sch40-spigot",
+      "options": {}
+    },
+    "expect": {
+      "bottom": "BFS-i06 120 x 75 mm fan",
+      "top": "6 in Sch 40 PVC spigot",
+      "overall_length_mm": 236.33,
+      "transition": {
+        "from_id": 100.0,
+        "to_id": 160.97,
+        "straight_neck": 30.0,
+        "taper_length": 113.78
+      },
+      "bottom_info": {
+        "fan_id": "bfs-i06",
+        "bore_d": 100.0,
+        "flange_t": 10.0,
+        "frame": 120.0,
+        "bolt_circle_d": 138.0,
+        "hole_d": 12.0,
+        "holes": 4
+      },
+      "top_info": {
+        "pipe_od": 168.27,
+        "spigot_od": 167.97,
+        "spigot_id": 160.97,
+        "spigot_length": 82.55,
+        "fitting_socket_depth": 76.2
+      },
+      "warnings": [],
+      "outer_profile": [
+        [
+          53.5,
+          0.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          53.5,
+          40.0
+        ],
+        [
+          83.987,
+          153.781
+        ],
+        [
+          83.987,
+          235.331
+        ],
+        [
+          82.987,
+          236.331
+        ]
+      ],
+      "inner_profile": [
+        [
+          50.0,
+          0.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          50.0,
+          40.0
+        ],
+        [
+          80.487,
+          153.781
+        ],
+        [
+          80.487,
+          236.331
+        ]
+      ]
+    }
+  },
+  {
+    "input": {
+      "a": "bfs-i06",
+      "b": "triclamp-1-1/2",
+      "options": {}
+    },
+    "expect": {
+      "bottom": "BFS-i06 120 x 75 mm fan",
+      "top": "1-1/2 in tri-clamp ferrule",
+      "overall_length_mm": 153.65,
+      "transition": {
+        "from_id": 100.0,
+        "to_id": 34.1,
+        "straight_neck": 0.0,
+        "taper_length": 128.57
+      },
+      "bottom_info": {
+        "fan_id": "bfs-i06",
+        "bore_d": 100.0,
+        "flange_t": 10.0,
+        "frame": 120.0,
+        "bolt_circle_d": 138.0,
+        "hole_d": 12.0,
+        "holes": 4
+      },
+      "top_info": {
+        "flange_od": 50.39,
+        "tube_od": 38.1,
+        "bore": 34.1,
+        "gasket_bead_d": 43.64,
+        "groove_w": 3.8,
+        "groove_depth": 1.59,
+        "bevel_deg": 20.0
+      },
+      "warnings": [],
+      "outer_profile": [
+        [
+          53.5,
+          0.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          19.05,
+          138.569
+        ],
+        [
+          19.05,
+          148.569
+        ],
+        [
+          25.197,
+          150.806
+        ],
+        [
+          25.197,
+          153.646
+        ]
+      ],
+      "inner_profile": [
+        [
+          50.0,
+          0.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          17.05,
+          138.569
+        ],
+        [
+          17.05,
+          153.646
+        ]
+      ]
+    }
+  },
+  {
+    "input": {
+      "a": "bfs-i06",
+      "b": "triclamp-1-1/2",
+      "options": {
+        "taper_deg": 37
+      }
+    },
+    "expect": {
+      "bottom": "BFS-i06 120 x 75 mm fan",
+      "top": "1-1/2 in tri-clamp ferrule",
+      "overall_length_mm": 70.79,
+      "transition": {
+        "from_id": 100.0,
+        "to_id": 34.1,
+        "straight_neck": 0.0,
+        "taper_length": 45.72
+      },
+      "bottom_info": {
+        "fan_id": "bfs-i06",
+        "bore_d": 100.0,
+        "flange_t": 10.0,
+        "frame": 120.0,
+        "bolt_circle_d": 138.0,
+        "hole_d": 12.0,
+        "holes": 4
+      },
+      "top_info": {
+        "flange_od": 50.39,
+        "tube_od": 38.1,
+        "bore": 34.1,
+        "gasket_bead_d": 43.64,
+        "groove_w": 3.8,
+        "groove_depth": 1.59,
+        "bevel_deg": 20.0
+      },
+      "warnings": [],
+      "outer_profile": [
+        [
+          53.5,
+          0.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          19.05,
+          55.717
+        ],
+        [
+          19.05,
+          65.717
+        ],
+        [
+          25.197,
+          67.954
+        ],
+        [
+          25.197,
+          70.794
+        ]
+      ],
+      "inner_profile": [
+        [
+          50.0,
+          0.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          17.05,
+          55.717
+        ],
+        [
+          17.05,
+          70.794
+        ]
+      ]
+    }
+  },
+  {
+    "input": {
+      "a": "bfs-i06",
+      "b": "npt-2-male",
+      "options": {}
+    },
+    "expect": {
+      "bottom": "BFS-i06 120 x 75 mm fan",
+      "top": "2 in NPT male",
+      "overall_length_mm": 133.56,
+      "transition": {
+        "from_id": 100.0,
+        "to_id": 49.67,
+        "straight_neck": 0.0,
+        "taper_length": 93.92
+      },
+      "bottom_info": {
+        "fan_id": "bfs-i06",
+        "bore_d": 100.0,
+        "flange_t": 10.0,
+        "frame": 120.0,
+        "bolt_circle_d": 138.0,
+        "hole_d": 12.0,
+        "holes": 4
+      },
+      "top_info": {
+        "tpi": 11.5,
+        "major_d_at_tip": 59.2,
+        "major_d_at_thread_end": 60.68,
+        "thread_length": 23.63,
+        "bore": 49.67,
+        "radial_clearance": 0.1
+      },
+      "warnings": [],
+      "outer_profile": [
+        [
+          53.5,
+          0.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          30.339,
+          103.924
+        ],
+        [
+          30.339,
+          109.924
+        ],
+        [
+          28.272,
+          109.924
+        ],
+        [
+          27.533,
+          133.557
+        ]
+      ],
+      "inner_profile": [
+        [
+          50.0,
+          0.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          24.833,
+          103.924
+        ],
+        [
+          24.833,
+          133.557
+        ]
+      ]
+    }
+  },
+  {
+    "input": {
+      "a": "bfs-i06",
+      "b": "npt-2-female",
+      "options": {}
+    },
+    "expect": {
+      "bottom": "BFS-i06 120 x 75 mm fan",
+      "top": "2 in NPT female",
+      "overall_length_mm": 124.95,
+      "transition": {
+        "from_id": 100.0,
+        "to_id": 54.28,
+        "straight_neck": 0.0,
+        "taper_length": 85.31
+      },
+      "bottom_info": {
+        "fan_id": "bfs-i06",
+        "bore_d": 100.0,
+        "flange_t": 10.0,
+        "frame": 120.0,
+        "bolt_circle_d": 138.0,
+        "hole_d": 12.0,
+        "holes": 4
+      },
+      "top_info": {
+        "tpi": 11.5,
+        "major_d_at_mouth": 60.29,
+        "tapped_depth": 23.63,
+        "outer_d": 70.29,
+        "bore_below_thread": 54.28,
+        "radial_clearance": 0.1
+      },
+      "warnings": [],
+      "outer_profile": [
+        [
+          53.5,
+          0.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          53.5,
+          10.0
+        ],
+        [
+          35.146,
+          95.312
+        ],
+        [
+          35.146,
+          124.945
+        ]
+      ],
+      "inner_profile": [
+        [
+          50.0,
+          0.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          50.0,
+          10.0
+        ],
+        [
+          27.141,
+          95.312
+        ],
+        [
+          27.141,
+          124.945
+        ]
+      ]
+    }
+  },
+  {
+    "input": {
+      "a": "triclamp-1-1/2",
+      "b": "npt-2-male",
+      "options": {}
+    },
+    "expect": {
+      "bottom": "1-1/2 in tri-clamp ferrule",
+      "top": "2 in NPT male",
+      "overall_length_mm": 86.84,
+      "transition": {
+        "from_id": 34.1,
+        "to_id": 49.67,
+        "straight_neck": 0.0,
+        "taper_length": 42.13
+      },
+      "bottom_info": {
+        "flange_od": 50.39,
+        "tube_od": 38.1,
+        "bore": 34.1,
+        "gasket_bead_d": 43.64,
+        "groove_w": 3.8,
+        "groove_depth": 1.59,
+        "bevel_deg": 20.0
+      },
+      "top_info": {
+        "tpi": 11.5,
+        "major_d_at_tip": 59.2,
+        "major_d_at_thread_end": 60.68,
+        "thread_length": 23.63,
+        "bore": 49.67,
+        "radial_clearance": 0.1
+      },
+      "warnings": [],
+      "outer_profile": [
+        [
+          25.197,
+          0.0
+        ],
+        [
+          25.197,
+          2.84
+        ],
+        [
+          19.05,
+          5.077
+        ],
+        [
+          19.05,
+          15.077
+        ],
+        [
+          19.05,
+          15.077
+        ],
+        [
+          30.339,
+          57.207
+        ],
+        [
+          30.339,
+          63.207
+        ],
+        [
+          28.272,
+          63.207
+        ],
+        [
+          27.533,
+          86.84
+        ]
+      ],
+      "inner_profile": [
+        [
+          17.05,
+          0.0
+        ],
+        [
+          17.05,
+          15.077
+        ],
+        [
+          17.05,
+          15.077
+        ],
+        [
+          24.833,
+          57.207
+        ],
+        [
+          24.833,
+          86.84
+        ]
+      ]
+    }
+  }
+]
