@@ -95,3 +95,32 @@ def test_repaint_moves_only_given_vertices(tmp_path):
     np.testing.assert_array_equal(mesh.vertices[1:], orig.vertices[1:])
     with pytest.raises(ValueError, match="out of range"):
         bambu3mf.repaint(src, tmp_path / "c.3mf", codes, moved={99: (0, 0, 0)})
+
+
+def test_adapter_fan_to_4in_pvc_spigot():
+    from cad import adapter
+
+    mesh, lay = adapter.build("bfs-i06", "4in sch40 pvc spigot")
+    report = adapter.check(mesh, lay)
+    assert report["watertight"] and report["bodies"] == 1 and report["warnings"] == []
+    assert report["extents_mm"][:2] == [120.0, 120.0]
+    assert report["fittings"]["top"]["spigot_od"] == pytest.approx(4.5 * 25.4 + adapter.SPIGOT_DIAMETRAL_ALLOWANCE)
+    assert report["fittings"]["top"]["spigot_length"] >= 2.0 * 25.4  # D2466 4" socket depth
+    # Bolt holes on the Ø138 circle at 45 deg go all the way through the flange.
+    for x, y in [(48.79, 48.79), (-48.79, 48.79), (-48.79, -48.79), (48.79, -48.79)]:
+        assert not mesh.contains([[x, y, adapter.FLANGE_T / 2]])[0]
+    assert mesh.contains([[60 - 1, 0, adapter.FLANGE_T / 2]])[0]  # flange material at the frame edge
+    assert report["bolt_access"]["ok"] and report["hub_clearance"]["ok"]
+
+
+def test_adapter_parse_and_contraction():
+    from cad import adapter
+
+    assert adapter.parse_fitting("pvc-1-1/2-sch40-socket").label == "1.5 in Sch 40 PVC socket"
+    for bad in ("pvc-5-sch40-spigot", "pvc-4-sch80-spigot", "pvc-4-spigot", "flange-6"):
+        with pytest.raises(ValueError):
+            adapter.parse_fitting(bad)
+    mesh, lay = adapter.build("pvc-1-1/2-sch40-socket", "bfs-i06")  # order doesn't matter: fan goes on the bed
+    assert lay["a"].kind == "fan"
+    assert mesh.is_watertight
+    assert lay["taper_len"] == pytest.approx((50 - lay["b"].join_inner_r) / np.tan(np.radians(adapter.TAPER_HALF_ANGLE)))
