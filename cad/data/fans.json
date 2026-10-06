@@ -1,0 +1,19 @@
+{
+  "fans": [
+    {
+      "id": "bfs-i06",
+      "name": "BFS-i06 120 x 75 mm fan",
+      "frame": 120.0,
+      "corner_r": 15.0,
+      "depth": 75.0,
+      "bolt_circle_d": 138.0,
+      "hole_d": 12.0,
+      "bore_d": 100.0,
+      "hub_d": 70.0,
+      "hub_proud": 7.9,
+      "verified": true,
+      "added_by": "built-in",
+      "notes": "From the manufacturer drawing; 4 x 12 mm holes at 45 deg on a 138 mm circle. Hub plate diameter not on the drawing, 70 mm assumed."
+    }
+  ]
+}

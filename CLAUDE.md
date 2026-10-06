@@ -21,7 +21,11 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
 - `cad/adapter.py`: duct adapters between two fittings from text specs, e.g.
   `python -m cad.adapter bfs-i06 pvc-4-sch40-spigot`. Fans in `FANS`, PVC Sch 40 spigot/socket, tri-clamp
   ferrules (`TRICLAMP`), NPT male/female threads (`NPT`, ASME B1.20.1); writes STL/3MF, section render,
-  fit-test prints and `report.json` (bolt access, bed fit).
+  fit-test prints and `report.json` (bolt access, bed fit). Fans come from `cad/fanlib.py` (built-ins in
+  `cad/data/fans.json` plus a user library JSON).
+- `cad/adapter_app/`: local web app for the adapter generator (`python -m cad.adapter_app`), stdlib HTTP server on
+  127.0.0.1 + static page with a three.js viewer (vendored). Fan form writes the user library. `packaging/` +
+  `.github/workflows/adapter-windows.yml` build `SalsaAdapter.exe` (PyInstaller) on a Windows runner.
 - `cad/figure_base.py`: put a painted multi-color figure 3MF on a plain CAD base (extra filament slot), filling
   small gaps under floating features. `bambu3mf.repaint` rewrites per-triangle paint codes (e.g. recolor a region).
 - `tests/`: offline tests against a fake Meshy API (`tests/fakes.py`). No key or credits needed.
@@ -35,4 +39,4 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
 - API reference: https://docs.meshy.ai/llms.txt and the OpenAPI spec at https://docs.meshy.ai/openapi.json.
   Creative Lab endpoints are not in the OpenAPI spec; use https://docs.meshy.ai/api/creative-lab-<name>.md.
   Check them before adding endpoints or parameters; prices in `pipeline.py` are from the docs and may drift.
-- Run tests: `python -m pytest -q`. Lint: `ruff check meshy3d tests`.
+- Run tests: `python -m pytest -q`. Lint: `ruff check meshy3d tests cad`.

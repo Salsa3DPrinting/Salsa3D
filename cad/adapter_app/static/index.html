@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duct Adapter Generator</title>
+<link rel="stylesheet" href="/static/style.css">
+<script type="importmap">{"imports": {"three": "/static/vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<header>
+  <h1>Duct Adapter Generator</h1>
+  <nav>
+    <button class="tab active" data-tab="make">Make adapter</button>
+    <button class="tab" data-tab="fans">Fans</button>
+    <button class="tab" data-tab="settings">Settings</button>
+  </nav>
+</header>
+
+<main>
+<!-- ============ Make adapter ============ -->
+<section id="tab-make" class="panel active">
+  <div class="grid">
+    <form id="make-form" class="card">
+      <h2>1. Fan side</h2>
+      <label>Fan
+        <select id="side-a"></select>
+      </label>
+      <div id="side-a-fitting" class="fitting hidden"></div>
+      <p id="fan-summary" class="muted small"></p>
+
+      <h2>2. Fitting side</h2>
+      <div id="side-b-fitting" class="fitting"></div>
+
+      <details>
+        <summary>Advanced</summary>
+        <div class="adv">
+          <label>Taper half-angle (deg) <input type="number" step="0.5" id="opt-taper_deg"></label>
+          <label>Wall thickness (mm) <input type="number" step="0.1" id="opt-wall"></label>
+          <label>Spigot OD vs pipe OD (mm) <input type="number" step="0.05" id="opt-spigot_allowance"></label>
+          <label>Socket ID vs pipe OD (mm) <input type="number" step="0.05" id="opt-socket_clearance"></label>
+          <label>NPT clearance per side (mm) <input type="number" step="0.05" id="opt-npt_clearance"></label>
+        </div>
+        <p class="muted small">Smaller taper = gentler cone but a longer part. Tune the fit values after printing a
+          fit-test piece; they only change the fitting end.</p>
+      </details>
+
+      <button type="submit" id="go" class="primary">Generate</button>
+      <p id="make-error" class="error"></p>
+    </form>
+
+    <div id="result" class="card hidden">
+      <h2 id="r-title"></h2>
+      <div id="r-warnings"></div>
+      <div class="views">
+        <div id="viewer" title="Drag to rotate, scroll to zoom"></div>
+        <img id="r-section" alt="Section through the adapter">
+      </div>
+      <table id="r-table"></table>
+      <h3>Downloads</h3>
+      <ul id="r-files" class="files"></ul>
+      <p class="muted small">Print the fit-test piece first and try it on the real fitting. Saved in
+        <span id="r-folder"></span> <button type="button" id="open-folder" class="link">Open folder</button></p>
+    </div>
+    <div id="busy" class="card hidden"><div class="spinner"></div><p>Building the model… threaded ends take
+      up to about 15 seconds.</p></div>
+  </div>
+</section>
+
+<!-- ============ Fans ============ -->
+<section id="tab-fans" class="panel">
+  <div class="card">
+    <h2>Fan library</h2>
+    <p id="fan-error" class="error"></p>
+    <table id="fan-table" class="list"></table>
+    <button id="new-fan" class="primary">Add a fan</button>
+  </div>
+
+  <div id="fan-editor" class="card hidden">
+    <h2 id="fan-editor-title">Add a fan</h2>
+    <div class="grid fan-grid">
+      <form id="fan-form">
+        <label>Name <input name="name" required placeholder="e.g. ACME 120x38 blower"></label>
+        <div id="fan-fields"></div>
+        <fieldset>
+          <legend>Hole pattern given as</legend>
+          <label class="inline"><input type="radio" name="pattern" value="circle" checked> Bolt circle diameter</label>
+          <label class="inline"><input type="radio" name="pattern" value="spacing"> Square spacing (center to center)</label>
+          <label id="spacing-row" class="hidden">Hole spacing (mm)
+            <input name="hole_spacing" type="number" step="any"></label>
+        </fieldset>
+        <label>Added by <input name="added_by" placeholder="Your name"></label>
+        <label>Notes / source <textarea name="notes" rows="3" placeholder="Drawing number, datasheet link, what was measured vs assumed"></textarea></label>
+        <label class="inline"><input type="checkbox" name="verified"> Dimensions checked against the drawing or the real fan</label>
+        <div class="row">
+          <button type="submit" class="primary">Save fan</button>
+          <button type="button" id="fan-cancel">Cancel</button>
+        </div>
+        <ul id="fan-form-errors" class="error"></ul>
+      </form>
+      <figure class="diagram">
+        <svg viewBox="0 0 400 300" role="img" aria-label="Fan dimension diagram">
+          <circle cx="170" cy="130" r="115" class="d-bolt"/>
+          <rect x="70" y="30" width="200" height="200" rx="26" class="d-frame"/>
+          <circle cx="170" cy="130" r="80" class="d-bore"/>
+          <circle cx="170" cy="130" r="38" class="d-hub"/>
+          <g class="d-hole"><circle cx="88.7" cy="48.7" r="9"/><circle cx="251.3" cy="48.7" r="9"/>
+            <circle cx="88.7" cy="211.3" r="9"/><circle cx="251.3" cy="211.3" r="9"/></g>
+          <line x1="88.7" y1="211.3" x2="251.3" y2="48.7" class="d-dim dashed"/>
+          <!-- frame size, below -->
+          <line x1="70" y1="258" x2="270" y2="258" class="d-dim"/>
+          <line x1="70" y1="236" x2="70" y2="264" class="d-ext"/><line x1="270" y1="236" x2="270" y2="264" class="d-ext"/>
+          <text x="170" y="276" class="d-txt">Frame size</text>
+          <!-- square spacing, left -->
+          <line x1="40" y1="48.7" x2="40" y2="211.3" class="d-dim"/>
+          <line x1="34" y1="48.7" x2="78" y2="48.7" class="d-ext"/><line x1="34" y1="211.3" x2="78" y2="211.3" class="d-ext"/>
+          <text x="30" y="130" class="d-txt small" transform="rotate(-90 30 130)">Square spacing</text>
+          <!-- leaders, right -->
+          <polyline points="278,82 300,62 312,62" class="d-lead"/><text x="316" y="66" class="d-txt left">Bolt circle Ø</text>
+          <polyline points="251.3,48.7 280,24 312,24" class="d-lead"/><text x="316" y="28" class="d-txt left">Hole Ø</text>
+          <polyline points="249,118 300,104 312,104" class="d-lead"/><text x="316" y="108" class="d-txt left">Air opening Ø</text>
+          <polyline points="207,138 300,146 312,146" class="d-lead"/><text x="316" y="150" class="d-txt left">Hub plate Ø</text>
+          <polyline points="263,222 300,232 312,232" class="d-lead"/><text x="316" y="236" class="d-txt left">Corner radius</text>
+        </svg>
+        <figcaption class="muted small">Holes are at the four corners (45°). Dimensions in mm.
+          The hub plate is the motor plate that sticks out past one face; use 0 if it's flush.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Settings ============ -->
+<section id="tab-settings" class="panel">
+  <form id="settings-form" class="card">
+    <h2>Settings</h2>
+    <label>Fan library file
+      <input name="fan_library" placeholder="\\server\share\Adapters\fans.json">
+    </label>
+    <p class="muted small">Point this at a file on a shared drive so everyone sees the same fans. Each person sets
+      it once. The file is created when the first fan is saved.</p>
+    <label>Output folder <input name="output_dir"></label>
+    <div class="row"><button type="submit" class="primary">Save settings</button>
+      <span id="settings-msg" class="muted"></span></div>
+    <hr>
+    <p class="muted small">Generator version <span id="version"></span>. Built-in fittings: PVC Sch 40 spigot/socket,
+      NPT male/female, tri-clamp ferrules. Close the black console window to stop the app.</p>
+    <button type="button" id="quit">Quit app</button>
+  </form>
+</section>
+</main>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

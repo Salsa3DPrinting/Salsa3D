@@ -116,7 +116,7 @@ def test_adapter_fan_to_4in_pvc_spigot():
 def test_adapter_parse_and_contraction():
     from cad import adapter
 
-    assert adapter.parse_fitting("pvc-1-1/2-sch40-socket").label == "1.5 in Sch 40 PVC socket"
+    assert adapter.parse_fitting("pvc-1-1/2-sch40-socket").label == "1-1/2 in Sch 40 PVC socket"
     for bad in ("pvc-5-sch40-spigot", "pvc-4-sch80-spigot", "pvc-4-spigot", "flange-6"):
         with pytest.raises(ValueError):
             adapter.parse_fitting(bad)
@@ -165,3 +165,20 @@ def test_adapter_triclamp_end():
     assert not mesh.contains([[43.64 / 2, 0, top - 0.8]])[0]  # gasket groove
     assert mesh.contains([[25.0, 0, top - 1.0]])[0]           # flange rim, Ø50.4
     assert not mesh.contains([[25.0, 0, top - 8.0]])[0]       # behind the bevel: clamp room
+
+
+def test_fitting_tables():
+    from cad import adapter
+
+    # B1.20.1 formulas reproduce the standard's tabulated E0 / L2.
+    for size, e0, l2 in [(0.5, 0.75843, 0.5337), (1.0, 1.21363, 0.6828), (2.0, 2.26902, 0.7565), (4.0, 4.33438, 1.3)]:
+        d = adapter.npt_dims(size)
+        assert d["E0"] == pytest.approx(e0, abs=1e-5) and d["L2"] == pytest.approx(l2, abs=1e-4)
+    end = adapter.parse_fitting("triclamp-2")
+    assert end.info["flange_od"] == pytest.approx(2.516 * 25.4, abs=0.01)
+    assert end.info["gasket_bead_d"] == pytest.approx(2.218 * 25.4, abs=0.01)
+    cat = adapter.catalog()
+    assert [s["size"] for s in cat["npt-male"]["sizes"]][:3] == ["1/8", "1/4", "3/8"]
+    for kind in cat.values():  # every listed spec parses
+        for s in kind["sizes"]:
+            adapter.parse_fitting(s["spec"])

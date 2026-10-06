@@ -1,0 +1,42 @@
+name: Adapter app (Windows exe)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "cad/**"
+      - "meshy3d/printprep.py"
+      - "packaging/**"
+      - "requirements.txt"
+      - ".github/workflows/adapter-windows.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pyinstaller==6.22.3
+      - name: Test
+        run: python -m pytest -q tests/test_cad.py tests/test_adapter_app.py
+      - name: Build exe
+        run: pyinstaller packaging/salsa_adapter.spec --noconfirm
+      - name: Self-test the exe
+        run: dist\SalsaAdapter.exe --selftest
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item dist\SalsaAdapter.exe out\
+          Copy-Item packaging\README-windows.txt out\README.txt
+          Copy-Item cad\adapter_app\static\vendor\three-LICENSE.txt out\
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SalsaAdapter-windows
+          path: out/
+          retention-days: 90
