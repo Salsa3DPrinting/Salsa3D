@@ -95,3 +95,18 @@ def test_repaint_moves_only_given_vertices(tmp_path):
     np.testing.assert_array_equal(mesh.vertices[1:], orig.vertices[1:])
     with pytest.raises(ValueError, match="out of range"):
         bambu3mf.repaint(src, tmp_path / "c.3mf", codes, moved={99: (0, 0, 0)})
+
+
+def test_name_tag_builds_clean():
+    from cad import name_tag
+    from cad.pixelfont import text_pixels
+
+    parts, layout = name_tag.build("M. Rodriguez", "Room 14")
+    assert all(layout[k] for k in ("text_inside_rim", "creeper_inside_rim", "text_clear_of_hole",
+                                   "text_clear_of_creeper"))
+    report = name_tag.check(parts)
+    assert report["overlaps_mm3"] == {}
+    assert all(p["watertight"] for p in report["parts"].values())
+    assert report["extents_mm"] == pytest.approx([63.5, 63.5, 2.0], abs=1e-3)
+    with pytest.raises(ValueError, match="no glyph"):
+        text_pixels("Zoë")

@@ -20,6 +20,8 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
   (watertight parts, no overlaps between colors).
 - `cad/figure_base.py`: put a painted multi-color figure 3MF on a plain CAD base (extra filament slot), filling
   small gaps under floating features. `bambu3mf.repaint` rewrites per-triangle paint codes (e.g. recolor a region).
+- `cad/name_tag.py` + `cad/pixelfont.py`: Minecraft-style round name tag (pixel font drawn in-repo; add glyphs to
+  `GLYPHS` for new letters). `python -m cad.name_tag --line1 ... --line2 ...`.
 - `tests/`: offline tests against a fake Meshy API (`tests/fakes.py`). No key or credits needed.
 
 ## Conventions
