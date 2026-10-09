@@ -123,3 +123,7 @@ def test_rack_mount_fits_pc_and_rack():
     inter = trimesh.boolean.intersection([body, r.pc_dummy()], engine="manifold")
     assert (inter.volume if len(inter.faces) else 0) < 1e-3
     assert body.extents == pytest.approx([254.0, 112.0, 88.11], abs=0.01)
+    # Rounded faceplate corners: the old sharp corners are gone, the edges are not.
+    x1, z0, z1 = r.PANEL_W / 2, 0.79 / 2, 0.79 / 2 + r.PANEL_H
+    probes = [[x1 - 0.3, 1.0, z0 + 0.3], [-x1 + 0.3, 1.0, z1 - 0.3], [x1 - 0.3, 1.0, 44.0]]
+    assert body.contains(probes).tolist() == [False, False, True]

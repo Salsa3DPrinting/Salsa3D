@@ -35,6 +35,7 @@ UNITS = 2
 PANEL_W = 254.0
 PANEL_H = UNITS * U - 0.79
 PANEL_T = 4.0
+PANEL_CORNER_R = 5.0             # rounded outer corners of the faceplate (seen from the front)
 OPENING_W = 222.25               # clear width between the rails
 HOLE_Z = (6.35, 38.1, 6.35 + U, 38.1 + U)  # top and bottom hole of each U
 HOLE_SPAN = (235.0, 236.5)       # center-to-center candidates -> slot covers both
@@ -69,6 +70,17 @@ def diff(a, ms):
     return trimesh.boolean.difference([a, *ms], engine="manifold")
 
 
+def rounded_panel(x0: float, x1: float, z0: float, z1: float, r: float, t: float) -> trimesh.Trimesh:
+    """Faceplate: rectangle in the X-Z plane with rounded corners, extruded from y=0 back to y=t."""
+    import shapely.geometry as sg
+
+    outline = sg.box(x0 + r, z0 + r, x1 - r, z1 - r).buffer(r, quad_segs=16) if r > 0 else sg.box(x0, z0, x1, z1)
+    m = trimesh.creation.extrude_polygon(outline, t)
+    # 2D (x, z) + extrusion -> world (x, y = t - extrusion, z); proper rotation (no mirroring).
+    m.apply_transform(np.array([[1, 0, 0, 0], [0, 0, -1, t], [0, 1, 0, 0], [0, 0, 0, 1]], dtype=float))
+    return m
+
+
 def slot(cx: float, cz: float, half_len: float, width: float, depth: float) -> trimesh.Trimesh:
     """Horizontal slot (along X) through the faceplate (along Y)."""
     r = width / 2
@@ -98,7 +110,7 @@ def build() -> tuple[trimesh.Trimesh, dict]:
     half_out = half_in + WALL_T
     tray_y1 = PANEL_T + pocket_d
 
-    panel = box(-PANEL_W / 2, PANEL_W / 2, 0, PANEL_T, panel_z0, panel_z0 + PANEL_H)
+    panel = rounded_panel(-PANEL_W / 2, PANEL_W / 2, panel_z0, panel_z0 + PANEL_H, PANEL_CORNER_R, PANEL_T)
     floor = box(-half_out, half_out, PANEL_T - 0.01, tray_y1, floor_bot, floor_top)
     walls = [box(s * half_in, s * half_out, PANEL_T - 0.01, tray_y1, floor_bot, floor_top + WALL_H)
              for s in (-1, 1)]
