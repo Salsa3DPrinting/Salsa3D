@@ -119,7 +119,7 @@ def test_rack_mount_fits_pc_and_rack():
     assert body.is_watertight and len(body.split(only_watertight=False)) == 1
     assert info["tray_fits_rail_opening"]
     lo, hi = info["slot_center_range_mm"]
-    assert lo < 235.0 and hi > 236.5  # covers both quoted 10" hole spacings
+    assert lo <= 238.0 and hi >= 242.0  # user's rack measured ~240 mm center-to-center, +-2 mm
     inter = trimesh.boolean.intersection([body, r.pc_dummy()], engine="manifold")
     assert (inter.volume if len(inter.faces) else 0) < 1e-3
     assert body.extents == pytest.approx([254.0, 112.0, 88.11], abs=0.01)

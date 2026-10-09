@@ -23,7 +23,7 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
 - `cad/name_tag.py` + `cad/pixelfont.py`: Minecraft-style round name tag (pixel font drawn in-repo; add glyphs to
   `GLYPHS` for new letters). `python -m cad.name_tag --line1 ... --line2 ...`.
 - `cad/rack_mount_10in.py`: 2U 10" rack shelf for a mini PC (default GMKtec M3 Pro 114x106x42.5 mm, user-confirmed);
-  slotted mount holes cover 235-236.5 mm spacing; prints face-down without supports.
+  slotted mount holes cover 238-242 mm spacing (user's rack measured ~240 mm); prints face-down without supports.
 - `tests/`: offline tests against a fake Meshy API (`tests/fakes.py`). No key or credits needed.
 
 ## Conventions

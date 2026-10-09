@@ -8,8 +8,8 @@ Sources for the numbers:
 - PC size: GMKtec's product page (114 x 106 x 42.5 mm), confirmed by the user's unit.
 - Rack: 1U = 44.45 mm; a panel is 1/32" (0.79 mm) shorter than its units; holes per U at 6.35,
   22.225 and 38.1 mm (EIA-310 pattern); 10" panel width 254 mm; clear opening between rails
-  222.25 mm. Hole spacing for 10" racks is quoted as ~235 mm and 236.5 mm by different sources,
-  so the mounting holes are slots covering both.
+  222.25 mm. Hole spacing: sources quote ~235 / 236.5 mm for 10" racks, but the user's rack measures
+  ~240 mm center-to-center (ruler), so the slots are centered on 240 mm and span 238-242 mm.
 
 Run: python -m cad.rack_mount_10in [--out DIR]
 """
@@ -38,9 +38,9 @@ PANEL_T = 4.0
 PANEL_CORNER_R = 5.0             # rounded outer corners of the faceplate (seen from the front)
 OPENING_W = 222.25               # clear width between the rails
 HOLE_Z = (6.35, 38.1, 6.35 + U, 38.1 + U)  # top and bottom hole of each U
-HOLE_SPAN = (235.0, 236.5)       # center-to-center candidates -> slot covers both
+HOLE_SPAN = (238.0, 242.0)       # center-to-center range the slots cover (user measured ~240 mm)
 SLOT_W = 6.5                     # M6 clearance
-SLOT_EXTRA = 1.5                 # slot length beyond the two candidate centers, each side
+SLOT_EXTRA = 0.0                 # extra slot length beyond HOLE_SPAN, each side
 
 # --- Tray -------------------------------------------------------------------
 FLOOR_T = 3.0
