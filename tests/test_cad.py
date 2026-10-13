@@ -120,8 +120,12 @@ def test_rack_mount_fits_pc_and_rack():
     assert info["tray_fits_rail_opening"]
     lo, hi = info["slot_center_range_mm"]
     assert lo <= 238.0 and hi >= 242.0  # user's rack measured ~240 mm center-to-center, +-2 mm
-    inter = trimesh.boolean.intersection([body, r.pc_dummy()], engine="manifold")
-    assert (inter.volume if len(inter.faces) else 0) < 1e-3
+    for dev in (r.pc_dummy(), r.kvm_dummy()):
+        inter = trimesh.boolean.intersection([body, dev], engine="manifold")
+        assert (inter.volume if len(inter.faces) else 0) < 1e-3
+    # The two windows sit side by side inside the rails, with a wall between them.
+    lay = r.layout()
+    assert lay["pc"][1] < lay["kvm"][0] and -r.OPENING_W / 2 < lay["outer"][0] and lay["outer"][1] < r.OPENING_W / 2
     assert body.extents == pytest.approx([254.0, 112.0, 88.11], abs=0.01)
     # Rounded faceplate corners: the old sharp corners are gone, the edges are not.
     x1, z0, z1 = r.PANEL_W / 2, 0.79 / 2, 0.79 / 2 + r.PANEL_H

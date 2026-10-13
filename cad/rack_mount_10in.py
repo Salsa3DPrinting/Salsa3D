@@ -1,4 +1,5 @@
-"""2U 10-inch rack shelf for a mini PC (default: GMKtec NucBox M3 Pro, 114 x 106 x 42.5 mm).
+"""2U 10-inch rack shelf for a mini PC (default: GMKtec NucBox M3 Pro, 114 x 106 x 42.5 mm) with a
+pass-through bay next to it for a JetKVM (43 x 31 x 60 mm, screen at the front, ports at the back).
 
 Coordinates (mm): X across the rack (centered), Y depth (faceplate front at y=0, tray toward +Y),
 Z up (rack unit boundary at z=0). Print it face-down: the faceplate is the first layers and the tray
@@ -6,6 +7,8 @@ grows straight up, so nothing needs support.
 
 Sources for the numbers:
 - PC size: GMKtec's product page (114 x 106 x 42.5 mm), confirmed by the user's unit.
+- JetKVM: 43 W x 31 H x 60 D mm per published reviews (CNX Software, GIGAZINE); touchscreen on the
+  front, USB-C / HDMI / Ethernet / RJ11 extension port on the back. Not measured on the user's unit.
 - Rack: 1U = 44.45 mm; a panel is 1/32" (0.79 mm) shorter than its units; holes per U at 6.35,
   22.225 and 38.1 mm (EIA-310 pattern); 10" panel width 254 mm; clear opening between rails
   222.25 mm. Hole spacing: sources quote ~235 / 236.5 mm for 10" racks, but the user's rack measures
@@ -28,6 +31,12 @@ from meshy3d import printprep
 # --- PC ---------------------------------------------------------------------
 PC_W, PC_D, PC_H = 114.0, 106.0, 42.5
 CLEAR = 0.8                      # per side, around the PC
+
+# --- JetKVM bay (beside the PC, screen visible through the faceplate, cables out the back) ---------
+KVM_W, KVM_H, KVM_D = 43.0, 31.0, 60.0
+KVM_CLEAR = 0.5
+KVM_TAB = 2.5                    # corner stops, small so they stay off the screen's active area
+BAY_GAP = 3.0                    # wall between the PC and the JetKVM
 
 # --- Rack -------------------------------------------------------------------
 U = 44.45
@@ -101,72 +110,101 @@ def gusset(x0: float, x1: float, z0: float, size: float) -> trimesh.Trimesh:
     return trimesh.convex.convex_hull(np.array(pts))
 
 
+def layout() -> dict:
+    """X positions: PC pocket on the left, JetKVM pocket on the right, the pair centered in the rack."""
+    pc_w = PC_W + 2 * CLEAR
+    kvm_w = KVM_W + 2 * KVM_CLEAR
+    # Outer extent: gusset + wall | PC pocket | shared wall | KVM pocket | wall + gusset
+    total = 2 * (WALL_T + WALL_T) + pc_w + BAY_GAP + kvm_w
+    x0 = -total / 2 + 2 * WALL_T
+    pc = (x0, x0 + pc_w)
+    kvm = (pc[1] + BAY_GAP, pc[1] + BAY_GAP + kvm_w)
+    return {"pc": pc, "kvm": kvm, "outer": (-total / 2, total / 2)}
+
+
+def floor_top() -> float:
+    return (UNITS * U - (PC_H + CLEAR)) / 2          # PC centered in the 2U space
+
+
 def build() -> tuple[trimesh.Trimesh, dict]:
-    pocket_w, pocket_d, pocket_h = PC_W + 2 * CLEAR, PC_D + TRAY_EXTRA_D, PC_H + CLEAR
+    lay = layout()
+    pocket_d, pocket_h = PC_D + TRAY_EXTRA_D, PC_H + CLEAR
+    kvm_h = KVM_H + KVM_CLEAR
     panel_z0 = 0.79 / 2
-    floor_top = (UNITS * U - pocket_h) / 2          # PC centered in the 2U space
-    floor_bot = floor_top - FLOOR_T
-    half_in = pocket_w / 2
-    half_out = half_in + WALL_T
+    ft = floor_top()
+    floor_bot = ft - FLOOR_T
+    (pc0, pc1), (k0, k1) = lay["pc"], lay["kvm"]
+    out0, out1 = pc0 - WALL_T, k1 + WALL_T
     tray_y1 = PANEL_T + pocket_d
 
     panel = rounded_panel(-PANEL_W / 2, PANEL_W / 2, panel_z0, panel_z0 + PANEL_H, PANEL_CORNER_R, PANEL_T)
-    floor = box(-half_out, half_out, PANEL_T - 0.01, tray_y1, floor_bot, floor_top)
-    walls = [box(s * half_in, s * half_out, PANEL_T - 0.01, tray_y1, floor_bot, floor_top + WALL_H)
-             for s in (-1, 1)]
-    braces = [gusset(s * half_out, s * (half_out + WALL_T), floor_top, GUSSET) for s in (-1, 1)]
-    # Corner stops: small squares left in the window's corners, within the faceplate's thickness.
-    # The PC slides in from the back and stops against them; ports and button stay clear.
+    floor = box(out0, out1, PANEL_T - 0.01, tray_y1, floor_bot, ft)
+    walls = [box(pc0, out0, PANEL_T - 0.01, tray_y1, floor_bot, ft + WALL_H),       # left of the PC
+             box(pc1, k0, PANEL_T - 0.01, tray_y1, floor_bot, ft + WALL_H),         # between PC and JetKVM
+             box(k1, out1, PANEL_T - 0.01, tray_y1, floor_bot, ft + WALL_H)]        # right of the JetKVM
+    braces = [gusset(out0, out0 - WALL_T, ft, GUSSET), gusset(out1, out1 + WALL_T, ft, GUSSET)]
+    # Corner stops: small squares left in each window's corners, within the faceplate's thickness.
+    # Devices slide in from the back and stop against them; ports, button and screen stay clear.
     tabs = []
-    for sx in (-1, 1):
-        for z in (floor_top, floor_top + pocket_h - STOP_TAB):
-            x_in = sx * (half_in - STOP_TAB)
-            tabs.append(box(x_in, sx * half_in + sx * 0.01, 0, PANEL_T, z, z + STOP_TAB))
+    for (a, b), h, t in (((pc0, pc1), pocket_h, STOP_TAB), ((k0, k1), kvm_h, KVM_TAB)):
+        for x_in, x_edge in ((a, a + t), (b - t, b)):
+            for z in (ft, ft + h - t):
+                tabs.append(box(x_in - (0.01 if x_in == a else 0), x_edge + (0.01 if x_edge == b else 0),
+                                0, PANEL_T, z, z + t))
     body = union([panel, floor, *walls, *braces])
 
-    window = box(-half_in, half_in, -1, PANEL_T + 1, floor_top, floor_top + pocket_h)
+    windows = [box(pc0, pc1, -1, PANEL_T + 1, ft, ft + pocket_h), box(k0, k1, -1, PANEL_T + 1, ft, ft + kvm_h)]
     centers = np.mean(HOLE_SPAN) / 2
     half_len = (HOLE_SPAN[1] - HOLE_SPAN[0]) / 4 + SLOT_EXTRA / 2
     slots = [slot(s * centers, z, half_len, SLOT_W, PANEL_T) for s in (-1, 1) for z in HOLE_Z]
     vents = []
-    n = int((pocket_w - 2 * VENT_MARGIN + VENT_GAP) // (VENT_W + VENT_GAP))
+    n = int((pc1 - pc0 - 2 * VENT_MARGIN + VENT_GAP) // (VENT_W + VENT_GAP))
     span = n * VENT_W + (n - 1) * VENT_GAP
+    mid = (pc0 + pc1) / 2
     for i in range(n):
-        x0 = -span / 2 + i * (VENT_W + VENT_GAP)
-        vents.append(box(x0, x0 + VENT_W, PANEL_T + VENT_MARGIN, tray_y1 - VENT_MARGIN, floor_bot - 1, floor_top + 1))
-    body = diff(body, [window, *slots, *vents])
+        x0 = mid - span / 2 + i * (VENT_W + VENT_GAP)
+        vents.append(box(x0, x0 + VENT_W, PANEL_T + VENT_MARGIN, tray_y1 - VENT_MARGIN, floor_bot - 1, ft + 1))
+    body = diff(body, [*windows, *slots, *vents])
     body = union([body, *tabs])
 
     info = {
-        "pocket_mm": [round(pocket_w, 2), round(pocket_d, 2), round(pocket_h, 2)],
+        "pc_pocket_mm": [round(pc1 - pc0, 2), round(pocket_d, 2), round(pocket_h, 2)],
         "pc_mm": [PC_W, PC_D, PC_H],
-        "window_mm": [round(pocket_w, 2), round(pocket_h, 2)],
+        "pc_center_x_mm": round(mid, 2),
+        "kvm_window_mm": [round(k1 - k0, 2), round(kvm_h, 2)],
+        "kvm_mm": [KVM_W, KVM_H, KVM_D],
+        "kvm_center_x_mm": round((k0 + k1) / 2, 2),
         "panel_mm": [PANEL_W, round(PANEL_H, 2), PANEL_T],
-        "tray_outer_width_mm": round(2 * half_out, 2),
-        "tray_fits_rail_opening": bool(2 * (half_out + WALL_T) < OPENING_W),
+        "tray_outer_width_mm": round(out1 - out0, 2),
+        "tray_with_braces_mm": round(lay["outer"][1] - lay["outer"][0], 2),
+        "tray_fits_rail_opening": bool(lay["outer"][1] - lay["outer"][0] < OPENING_W),
         "slot_center_range_mm": [round(2 * (centers - half_len), 2), round(2 * (centers + half_len), 2)],
         "slot_edge_to_panel_edge_mm": round(PANEL_W / 2 - centers - half_len - SLOT_W / 2, 2),
-        "pc_bottom_z_mm": round(floor_top, 2),
-        "pc_top_z_mm": round(floor_top + PC_H, 2),
+        "pc_bottom_z_mm": round(ft, 2),
         "vent_slots": n,
     }
     return body, info
 
 
 def pc_dummy() -> trimesh.Trimesh:
-    pocket_h = PC_H + CLEAR
-    floor_top = (UNITS * U - pocket_h) / 2
-    return box(-PC_W / 2, PC_W / 2, PANEL_T, PANEL_T + PC_D, floor_top, floor_top + PC_H)
+    pc0 = layout()["pc"][0] + CLEAR
+    return box(pc0, pc0 + PC_W, PANEL_T, PANEL_T + PC_D, floor_top(), floor_top() + PC_H)
+
+
+def kvm_dummy() -> trimesh.Trimesh:
+    k0 = layout()["kvm"][0] + KVM_CLEAR
+    return box(k0, k0 + KVM_W, PANEL_T, PANEL_T + KVM_D, floor_top(), floor_top() + KVM_H)
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="2U 10-inch rack shelf for a mini PC")
+    ap = argparse.ArgumentParser(description="2U 10-inch rack shelf for a mini PC + JetKVM")
     ap.add_argument("--out", type=Path, default=Path("output/cad-rack-m3pro"))
     args = ap.parse_args(argv)
     body, info = build()
-    pc = pc_dummy()
-    inter = trimesh.boolean.intersection([body, pc], engine="manifold")
-    info["pc_overlap_mm3"] = round(float(inter.volume), 3) if len(inter.faces) else 0.0
+    pc, kvm = pc_dummy(), kvm_dummy()
+    for key, dev in (("pc_overlap_mm3", pc), ("kvm_overlap_mm3", kvm)):
+        inter = trimesh.boolean.intersection([body, dev], engine="manifold")
+        info[key] = round(float(inter.volume), 3) if len(inter.faces) else 0.0
     info["watertight"] = bool(body.is_watertight)
     info["bodies"] = len(body.split(only_watertight=False))
     info["extents_mm"] = [round(float(v), 2) for v in body.extents]
@@ -186,10 +224,11 @@ def main(argv: list[str] | None = None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     printable.export(out / "rack-mount-m3pro.stl")
     printable.export(out / "rack-mount-m3pro.3mf")
-    rgb = printprep.hex_to_rgb(["#3A3F45", "#B8BEC6"])
+    rgb = printprep.hex_to_rgb(["#3A3F45", "#B8BEC6", "#E0A030"])
     for name, angle in (("front", 0), ("back", 180), ("angled", -35), ("angled-back", 145)):
-        tri = np.concatenate([body.triangles, pc.triangles])
-        cols = np.vstack([np.tile(rgb[0], (len(body.faces), 1)), np.tile(rgb[1], (len(pc.faces), 1))])
+        tri = np.concatenate([body.triangles, pc.triangles, kvm.triangles])
+        cols = np.vstack([np.tile(rgb[0], (len(body.faces), 1)), np.tile(rgb[1], (len(pc.faces), 1)),
+                          np.tile(rgb[2], (len(kvm.faces), 1))])
         printprep.render_colored_faces(tri, cols, out / f"view-{name}.png", "", views=((angle, name),), px_per_mm=4)
     (out / "report.json").write_text(json.dumps(info, indent=2))
     print(json.dumps(info, indent=2))
