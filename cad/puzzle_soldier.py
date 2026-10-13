@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 import shapely.geometry as sg
 import trimesh
-from shapely.affinity import translate
+from shapely.affinity import scale, translate
 from shapely.ops import unary_union
 
 from cad.name_tag import drop_slivers, extrude
@@ -63,16 +63,83 @@ def circle(x, y, r_px) -> sg.Polygon:
     return sg.Point(cx, cy).buffer(r_px * SCALE * WIDEN, quad_segs=24)
 
 
-def band(p0, p1, width_px) -> sg.Polygon:
-    """A straight strap between two photo points (e.g. the cross-belts)."""
-    return sg.LineString([px(*p0), px(*p1)]).buffer(width_px * SCALE * WIDEN / 2, cap_style="flat")
+def band(p0, p1, width_mm) -> sg.Polygon:
+    """A straight strap through two photo points, `width_mm` wide (e.g. the cross-belts)."""
+    return sg.LineString([px(*p0), px(*p1)]).buffer(width_mm / 2, cap_style="flat")
+
+
+def extend(p0, p1, y0, y1):
+    """The line through photo points p0 and p1, cut at photo rows y0 and y1."""
+    (x0, a), (x1, b) = p0, p1
+    at = lambda y: (x0 + (x1 - x0) * (y - a) / (b - a), y)
+    return at(y0), at(y1)
+
+
+def stroke(pts, radius, step: float = 0.15) -> sg.Polygon:
+    """A brush stroke along a polyline whose half-width goes through `radius` (one value per point)."""
+    knots = np.r_[0, np.cumsum(np.hypot(*np.diff(np.asarray(pts), axis=0).T))]
+    line = sg.LineString(smooth(pts))  # same ends, rounded bends
+    t = knots / knots[-1]
+    dots = [line.interpolate(d).buffer(float(np.interp(d / line.length, t, radius)), quad_segs=12)
+            for d in np.arange(0, line.length + step, step)]
+    return unary_union(dots)
+
+
+def smooth(pts, rounds: int = 4):
+    """Chaikin corner cutting: keeps the end points, rounds every bend."""
+    p = np.asarray(pts, dtype=float)
+    for _ in range(rounds):
+        q = np.empty((2 * len(p) - 2, 2))
+        q[0::2] = 0.75 * p[:-1] + 0.25 * p[1:]
+        q[1::2] = 0.25 * p[:-1] + 0.75 * p[1:]
+        p = np.vstack([p[:1], q, p[-1:]])
+    return p
+
+
+def mirror(pts):
+    return [(-x, y) for x, y in pts]
+
+
+def face() -> list[tuple[int, sg.Polygon]]:
+    """Eyebrows, eyes, handlebar mustache and open mouth, traced from the photo's face.
+
+    Drawn in mm (x from the face's center line, y down from the top of the head) instead of photo
+    pixels so the 1.5x widening doesn't stretch them, and so no line is thinner than ~1 mm (thinner
+    lines don't print with a 0.4 mm nozzle).
+    """
+    top = px(0, 360)[1]
+
+    def f(pts):
+        return [(x, top - y) for x, y in pts]
+
+    brow = [(-9.6, 3.4), (-8.2, 2.0), (-6.0, 1.5), (-3.8, 1.9), (-2.4, 2.9)]
+    brows = unary_union([sg.LineString(f(b)).buffer(0.55, quad_segs=8) for b in (brow, mirror(brow))])
+    eye_white = sg.Point(0, 0).buffer(1.0, quad_segs=24)
+    whites = unary_union([translate(scale(eye_white, 3.0, 1.6, origin=(0, 0)), x, top - 4.2) for x in (-5.8, 5.8)])
+    # Pupils up against the top of the eye (as in the photo): no white sliver too thin to print above them.
+    pupils = unary_union([sg.Point(x, top - 3.75).buffer(1.15, quad_segs=24) for x in (-5.8, 5.8)]).intersection(whites)
+    # Handlebar mustache: a brush stroke along a curve, thickest mid-cheek, curling up at the tips,
+    # with a small notch at the center where the two halves meet.
+    path = [(-0.4, 7.3), (-2.0, 7.5), (-4.0, 8.0), (-6.0, 8.1), (-7.9, 7.6), (-9.1, 6.7), (-9.2, 5.6), (-8.4, 5.3)]
+    radius = [0.75, 0.9, 1.0, 0.9, 0.75, 0.6, 0.5, 0.5]
+    mustache = unary_union([stroke(f(pts), radius) for pts in (path, mirror(path))])
+    lips = [(-2.8, 8.4), (2.8, 8.4), (2.5, 9.9), (1.4, 10.9), (0, 11.4), (-1.4, 10.9), (-2.5, 9.9)]
+    teeth = sg.Polygon(f(lips)).intersection(sg.box(-5, top - 9.4, 5, top - 8.0))  # full width: no thin red
+    return [(BLACK, brows), (BLACK, pupils), (WHITE, whites), (BLACK, mustache), (WHITE, teeth),
+            (RED, sg.Polygon(f(lips)))]
 
 
 def pieces() -> list[dict]:
-    """Each piece: name, main color, outline, and colored details (clipped to the outline)."""
+    """Each piece: name, main color, outline, and colored details (clipped to the outline).
+
+    Where details overlap, the first one listed wins.
+    """
+    plume = unary_union([poly((703, 100), (722, 125), (738, 160), (728, 220), (712, 300), (694, 300), (678, 220),
+                              (668, 160), (684, 125)),
+                         circle(703, 305, 16)])                                  # round knob at the bottom
     hat = unary_union([
-        poly((620, 165), (788, 165), (780, 360), (632, 360)),                   # crown + visor
-        poly((703, 100), (738, 160), (703, 200), (668, 160)),                    # plume tip above the crown
+        poly((618, 165), (788, 165), (778, 360), (632, 360)),                   # crown + band
+        plume.intersection(sg.box(-50, px(0, 170)[1], 50, 300)),                # plume tip above the crown
     ])
     # The yellow collar belongs to the head piece: as a strip on top of the tunic it would be ~3 mm wide.
     head = poly((640, 360), (778, 360), (776, 490), (775, 522), (645, 522), (643, 490))
@@ -99,31 +166,34 @@ def pieces() -> list[dict]:
         sg.Point(cx, top - 3.0).buffer(3.0, quad_segs=16),                     # rounded tip
     ])
 
+    # Cross-belts: from over each shoulder down to the waist belt (traced centerlines, extended past
+    # both ends so the clip to each piece's outline and the belt decide where they stop). They run
+    # across the arm pieces' shoulders too, so they line up when the puzzle is done.
+    belt = poly((480, 850), (940, 850), (940, 900), (480, 900))
+    straps = unary_union([band(*extend((560, 560), (812, 850), 480, 875), 4.6),
+                          band(*extend((885, 560), (610, 850), 480, 875), 4.6)])
+    buttons = [circle(710, y, 18) for y in (655, 800, 960, 1088)]
+    buttons.append(sg.Point(px(709, 552)).buffer(1.6, quad_segs=16))          # small one under the collar
     return [
         {"name": "hat", "color": BLUE, "shape": hat,
-         "details": [(YELLOW, poly((703, 100), (738, 160), (712, 290), (703, 320), (694, 290), (668, 160))),
-                     (YELLOW, circle(703, 308, 17))]},
+         "details": [(YELLOW, plume),
+                     (YELLOW, poly((630, 322), (646, 322), (646, 346), (630, 346))),    # band corner tabs
+                     (YELLOW, poly((764, 322), (780, 322), (780, 346), (764, 346)))]},
         {"name": "head", "color": SKIN, "shape": head,
-         "details": [(BLACK, circle(675, 388, 11)), (BLACK, circle(740, 388, 11)),
-                     (BLACK, unary_union([poly((664, 422), (700, 412), (707, 432), (668, 440)),
-                                          poly((752, 422), (716, 412), (707, 432), (748, 440))])),
-                     (RED, circle(707, 448, 9)),
-                     (YELLOW, poly((640, 490), (780, 490), (780, 530), (640, 530)))]},
+         "details": [*face(), (YELLOW, poly((630, 490), (790, 490), (790, 530), (630, 530)))]},
         {"name": "tunic", "color": RED, "shape": tunic,
-         "details": [(WHITE, band((565, 575), (845, 855), 40)), (WHITE, band((850, 575), (570, 855), 40)),
-                     (WHITE, poly((555, 850), (860, 850), (860, 900), (555, 900))),
-                     *[(YELLOW, circle(710, y, 18)) for y in (655, 790, 960, 1085)]]},
-        {"name": "left arm", "color": RED, "shape": arm_l, "details": [(WHITE, poly((497, 900), (555, 900),
-                                                                                    (555, 1000), (497, 1000)))]},
-        {"name": "right arm", "color": RED, "shape": arm_r, "details": [(WHITE, poly((860, 920), (918, 920),
-                                                                                     (918, 1000), (860, 1000)))]},
-        {"name": "left leg", "color": BLUE, "shape": leg_l, "details": [(BLACK, poly((560, 1715), (690, 1715),
-                                                                                     (690, 1815), (560, 1815)))]},
-        {"name": "right leg", "color": BLUE, "shape": leg_r, "details": [(BLACK, poly((760, 1715), (890, 1715),
-                                                                                      (890, 1815), (760, 1815)))]},
+         "details": [(WHITE, belt), (WHITE, straps), *[(YELLOW, b) for b in buttons]]},
+        {"name": "left arm", "color": RED, "shape": arm_l,
+         "details": [(WHITE, straps), (WHITE, poly((480, 900), (570, 900), (570, 1010), (480, 1010)))]},
+        {"name": "right arm", "color": RED, "shape": arm_r,
+         "details": [(WHITE, straps), (WHITE, poly((850, 920), (930, 920), (930, 1010), (850, 1010)))]},
+        {"name": "left leg", "color": BLUE, "shape": leg_l, "details": [(BLACK, poly((550, 1715), (700, 1715),
+                                                                                     (700, 1830), (550, 1830)))]},
+        {"name": "right leg", "color": BLUE, "shape": leg_r, "details": [(BLACK, poly((750, 1715), (900, 1715),
+                                                                                      (900, 1830), (750, 1830)))]},
         {"name": "rifle", "color": BROWN, "shape": rifle,
          "details": [(BLACK, sg.box(cx - w, stock_top, cx + w, barrel_top)),
-                     (WHITE, sg.box(cx - w, barrel_top, cx + w, top + 1))]},
+                     (WHITE, sg.box(cx - w, barrel_top, cx + w, top + 10))]},
     ]
 
 
@@ -186,7 +256,8 @@ def board(ps):
     sx0, sy0, sx1, sy1 = silhouette.bounds
     outline = sg.box(sx0 - MARGIN + BOARD_R, sy0 - MARGIN + BOARD_R, sx1 + MARGIN - BOARD_R,
                      sy1 + MARGIN - BOARD_R).buffer(BOARD_R, quad_segs=16)
-    floor_details = [(p["color"], p["shape"]) for p in ps]
+    # The floor shows the whole picture (details too), each piece's art clipped to its own spot.
+    floor_details = [(c, d.intersection(p["shape"])) for p in ps for c, d in [*p["details"], (p["color"], p["shape"])]]
     meshes = solid_with_details(silhouette, BOARD, floor_details, 0, FLOOR_T, FLOOR_INLAY_T)
     rim = outline.difference(silhouette)
     meshes.append((BOARD, extrude(rim, 0, FLOOR_T + WALL_H)))
