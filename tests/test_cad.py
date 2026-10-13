@@ -127,3 +127,33 @@ def test_rack_mount_fits_pc_and_rack():
     x1, z0, z1 = r.PANEL_W / 2, 0.79 / 2, 0.79 / 2 + r.PANEL_H
     probes = [[x1 - 0.3, 1.0, z0 + 0.3], [-x1 + 0.3, 1.0, z1 - 0.3], [x1 - 0.3, 1.0, 44.0]]
     assert body.contains(probes).tolist() == [False, False, True]
+
+
+def test_soldier_puzzle_fits_and_prints(tmp_path):
+    from shapely.ops import unary_union
+
+    from cad import puzzle_soldier as ps
+    from meshy3d import bambu3mf
+
+    parts, info, pieces = ps.build()
+    assert info["piece_count"] == 8
+    assert all(p.mesh.is_watertight for p in parts)
+    allm = trimesh.util.concatenate([p.mesh for p in parts])
+    assert allm.extents[0] <= ps.PLATE and allm.extents[1] <= ps.PLATE
+    for i, a in enumerate(parts):  # no two filaments share volume
+        for b in parts[i + 1:]:
+            inter = trimesh.boolean.intersection([a.mesh, b.mesh], engine="manifold")
+            assert (inter.volume if len(inter.faces) else 0) < 1e-3, (a.name, b.name)
+    # Every piece fits its spot with clearance and stays clear of the other pieces' spots.
+    for p in pieces:
+        o = ps.piece_outline(p["shape"])
+        assert p["shape"].buffer(-ps.CLEAR + 1e-6).contains(o)
+    outlines = [ps.piece_outline(p["shape"]) for p in pieces]
+    assert ps.overlaps(outlines) == 0
+    assert unary_union([p["shape"] for p in pieces]).bounds[3] == pytest.approx(ps.HEIGHT)
+    assert info["board_wall_area_thinner_than_3mm_mm2"] < 10  # only small corner notches
+    path = tmp_path / "puzzle.3mf"
+    bambu3mf.write(parts, ps.PALETTE, path)
+    back = bambu3mf.read_parts(path)
+    assert sorted(p["filament"] for p in back) == list(range(1, 9))
+    assert sum(len(p["mesh"].faces) for p in back) == sum(len(p.mesh.faces) for p in parts)
