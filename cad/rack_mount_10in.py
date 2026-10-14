@@ -1,5 +1,6 @@
 """2U 10-inch rack shelf for a mini PC (default: GMKtec NucBox M3 Pro, 114 x 106 x 42.5 mm) with a
-pass-through bay next to it for a JetKVM (43 x 31 x 60 mm, screen at the front, ports at the back).
+pass-through bay next to it for a JetKVM: its 24 mm tall body slides in from the front through a
+43 x 24 mm (+ clearance) opening and the taller screen head (31 mm) stays in front of the faceplate.
 
 Coordinates (mm): X across the rack (centered), Y depth (faceplate front at y=0, tray toward +Y),
 Z up (rack unit boundary at z=0). Print it face-down: the faceplate is the first layers and the tray
@@ -7,8 +8,9 @@ grows straight up, so nothing needs support.
 
 Sources for the numbers:
 - PC size: GMKtec's product page (114 x 106 x 42.5 mm), confirmed by the user's unit.
-- JetKVM: 43 W x 31 H x 60 D mm per published reviews (CNX Software, GIGAZINE); touchscreen on the
-  front, USB-C / HDMI / Ethernet / RJ11 extension port on the back. Not measured on the user's unit.
+- JetKVM: the maker's dimension drawing (shared by the user): 43 mm wide, 60 mm long, body 24 mm
+  tall with a 31 mm tall screen head at the front; USB-C / HDMI / Ethernet / RJ11 on the back.
+  The head's depth isn't dimensioned on the drawing; ~30 mm is scaled from it (only used for the preview).
 - Rack: 1U = 44.45 mm; a panel is 1/32" (0.79 mm) shorter than its units; holes per U at 6.35,
   22.225 and 38.1 mm (EIA-310 pattern); 10" panel width 254 mm; clear opening between rails
   222.25 mm. Hole spacing: sources quote ~235 / 236.5 mm for 10" racks, but the user's rack measures
@@ -32,10 +34,10 @@ from meshy3d import printprep
 PC_W, PC_D, PC_H = 114.0, 106.0, 42.5
 CLEAR = 0.8                      # per side, around the PC
 
-# --- JetKVM bay (beside the PC, screen visible through the faceplate, cables out the back) ---------
-KVM_W, KVM_H, KVM_D = 43.0, 31.0, 60.0
-KVM_CLEAR = 0.5
-KVM_TAB = 2.5                    # corner stops, small so they stay off the screen's active area
+# --- JetKVM bay (beside the PC; body through the faceplate, screen head out front, cables out back) --
+KVM_W, KVM_BODY_H, KVM_HEAD_H, KVM_D = 43.0, 24.0, 31.0, 60.0
+KVM_HEAD_D = 30.0                # head depth, scaled from the drawing (preview only)
+KVM_CLEAR = 0.5                  # per side; the body sits on the floor, so the height gets 2x on top
 BAY_GAP = 3.0                    # wall between the PC and the JetKVM
 
 # --- Rack -------------------------------------------------------------------
@@ -129,7 +131,7 @@ def floor_top() -> float:
 def build() -> tuple[trimesh.Trimesh, dict]:
     lay = layout()
     pocket_d, pocket_h = PC_D + TRAY_EXTRA_D, PC_H + CLEAR
-    kvm_h = KVM_H + KVM_CLEAR
+    kvm_h = KVM_BODY_H + 2 * KVM_CLEAR
     panel_z0 = 0.79 / 2
     ft = floor_top()
     floor_bot = ft - FLOOR_T
@@ -146,7 +148,8 @@ def build() -> tuple[trimesh.Trimesh, dict]:
     # Corner stops: small squares left in each window's corners, within the faceplate's thickness.
     # Devices slide in from the back and stop against them; ports, button and screen stay clear.
     tabs = []
-    for (a, b), h, t in (((pc0, pc1), pocket_h, STOP_TAB), ((k0, k1), kvm_h, KVM_TAB)):
+    # The JetKVM needs none: its taller head rests against the faceplate above the opening.
+    for (a, b), h, t in (((pc0, pc1), pocket_h, STOP_TAB),):
         for x_in, x_edge in ((a, a + t), (b - t, b)):
             for z in (ft, ft + h - t):
                 tabs.append(box(x_in - (0.01 if x_in == a else 0), x_edge + (0.01 if x_edge == b else 0),
@@ -172,7 +175,8 @@ def build() -> tuple[trimesh.Trimesh, dict]:
         "pc_mm": [PC_W, PC_D, PC_H],
         "pc_center_x_mm": round(mid, 2),
         "kvm_window_mm": [round(k1 - k0, 2), round(kvm_h, 2)],
-        "kvm_mm": [KVM_W, KVM_H, KVM_D],
+        "kvm_mm": {"width": KVM_W, "body_h": KVM_BODY_H, "head_h": KVM_HEAD_H, "length": KVM_D},
+        "kvm_head_overlap_above_opening_mm": round(KVM_HEAD_H - kvm_h, 2),
         "kvm_center_x_mm": round((k0 + k1) / 2, 2),
         "panel_mm": [PANEL_W, round(PANEL_H, 2), PANEL_T],
         "tray_outer_width_mm": round(out1 - out0, 2),
@@ -192,8 +196,11 @@ def pc_dummy() -> trimesh.Trimesh:
 
 
 def kvm_dummy() -> trimesh.Trimesh:
-    k0 = layout()["kvm"][0] + KVM_CLEAR
-    return box(k0, k0 + KVM_W, PANEL_T, PANEL_T + KVM_D, floor_top(), floor_top() + KVM_H)
+    """Body through the opening, head in front of the faceplate (front of the head at y = -KVM_HEAD_D)."""
+    k0, z0 = layout()["kvm"][0] + KVM_CLEAR, floor_top()
+    body = box(k0, k0 + KVM_W, -KVM_HEAD_D, KVM_D - KVM_HEAD_D, z0, z0 + KVM_BODY_H)
+    head = box(k0, k0 + KVM_W, -KVM_HEAD_D, -0.01, z0 + KVM_BODY_H - 0.01, z0 + KVM_HEAD_H)
+    return union([body, head])
 
 
 def main(argv: list[str] | None = None) -> int:
