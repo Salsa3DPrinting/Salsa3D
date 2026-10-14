@@ -125,7 +125,12 @@ def test_rack_mount_fits_pc_and_rack():
         assert (inter.volume if len(inter.faces) else 0) < 1e-3
     # The two windows sit side by side inside the rails, with a wall between them.
     lay = r.layout()
-    assert lay["pc"][1] < lay["kvm"][0] and -r.OPENING_W / 2 < lay["outer"][0] and lay["outer"][1] < r.OPENING_W / 2
+    # Zip-tie slots go through the floor behind the JetKVM; the floor next to them is solid.
+    kmid, fz = sum(lay["kvm"]) / 2, r.floor_top() - r.FLOOR_T / 2
+    holes = [[kmid + s * r.TIE_SPAN / 2, r.TIE_Y, fz] for s in (-1, 1)]
+    assert not body.contains(holes).any() and body.contains([[kmid, r.TIE_Y, fz]]).all()
+    assert r.TIE_Y - r.TIE_L / 2 > r.KVM_D - r.KVM_HEAD_D
+    assert lay["kvm"][0] - lay["pc"][1] >= 10 and -r.OPENING_W / 2 < lay["outer"][0] and lay["outer"][1] < r.OPENING_W / 2
     assert body.extents == pytest.approx([254.0, 112.0, 88.11], abs=0.01)
     # Rounded faceplate corners: the old sharp corners are gone, the edges are not.
     x1, z0, z1 = r.PANEL_W / 2, 0.79 / 2, 0.79 / 2 + r.PANEL_H

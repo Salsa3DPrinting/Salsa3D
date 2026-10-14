@@ -24,7 +24,7 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
   `GLYPHS` for new letters). `python -m cad.name_tag --line1 ... --line2 ...`.
 - `cad/rack_mount_10in.py`: 2U 10" rack shelf for a mini PC (default GMKtec M3 Pro 114x106x42.5 mm, user-confirmed)
   plus a JetKVM pass-through beside it (44x25 mm opening for its 43x24 mm body; the 31 mm screen head stays out
-  front and is the stop, per the maker's drawing); slotted mount holes cover
+  front and is the stop, per the maker's drawing; zip-tie slots behind it, 12 mm between the bays); slotted mount holes cover
   238-242 mm spacing (user's rack measured ~240 mm); prints face-down without supports.
 - `cad/puzzle_soldier.py`: kids' tray puzzle of the Framingham Shoppers World soldier (8 in tall, traced from the
   user's front photo, widened 1.5x). 8 pieces with small colors as flush inlays; the board floor is colored under

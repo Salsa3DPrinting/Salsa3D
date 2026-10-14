@@ -38,7 +38,10 @@ CLEAR = 0.8                      # per side, around the PC
 KVM_W, KVM_BODY_H, KVM_HEAD_H, KVM_D = 43.0, 24.0, 31.0, 60.0
 KVM_HEAD_D = 30.0                # head depth, scaled from the drawing (preview only)
 KVM_CLEAR = 0.5                  # per side; the body sits on the floor, so the height gets 2x on top
-BAY_GAP = 3.0                    # wall between the PC and the JetKVM
+BAY_GAP = 12.0                   # PC pocket to JetKVM pocket: a wall on each side, open space between
+TIE_W, TIE_L = 2.5, 5.0          # zip-tie slots in the floor (fit ties up to ~4.5 mm wide, 2 mm thick)
+TIE_Y = 45.0                     # slot center, from the faceplate front: behind the JetKVM's ~30 mm body
+TIE_SPAN = 26.0                  # center-to-center of the two slots (the tie goes down one, up the other)
 
 # --- Rack -------------------------------------------------------------------
 U = 44.45
@@ -142,7 +145,8 @@ def build() -> tuple[trimesh.Trimesh, dict]:
     panel = rounded_panel(-PANEL_W / 2, PANEL_W / 2, panel_z0, panel_z0 + PANEL_H, PANEL_CORNER_R, PANEL_T)
     floor = box(out0, out1, PANEL_T - 0.01, tray_y1, floor_bot, ft)
     walls = [box(pc0, out0, PANEL_T - 0.01, tray_y1, floor_bot, ft + WALL_H),       # left of the PC
-             box(pc1, k0, PANEL_T - 0.01, tray_y1, floor_bot, ft + WALL_H),         # between PC and JetKVM
+             box(pc1, pc1 + WALL_T, PANEL_T - 0.01, tray_y1, floor_bot, ft + WALL_H),  # right of the PC
+             box(k0 - WALL_T, k0, PANEL_T - 0.01, tray_y1, floor_bot, ft + WALL_H),    # left of the JetKVM
              box(k1, out1, PANEL_T - 0.01, tray_y1, floor_bot, ft + WALL_H)]        # right of the JetKVM
     braces = [gusset(out0, out0 - WALL_T, ft, GUSSET), gusset(out1, out1 + WALL_T, ft, GUSSET)]
     # Corner stops: small squares left in each window's corners, within the faceplate's thickness.
@@ -167,7 +171,12 @@ def build() -> tuple[trimesh.Trimesh, dict]:
     for i in range(n):
         x0 = mid - span / 2 + i * (VENT_W + VENT_GAP)
         vents.append(box(x0, x0 + VENT_W, PANEL_T + VENT_MARGIN, tray_y1 - VENT_MARGIN, floor_bot - 1, ft + 1))
-    body = diff(body, [*windows, *slots, *vents])
+    # Zip-tie slots behind the JetKVM: strap its cables to the floor so a tug from the back can't pull
+    # it out. Long side along the depth, so printed face-down each slot only bridges TIE_W.
+    kmid = (k0 + k1) / 2
+    ties = [box(kmid + s * TIE_SPAN / 2 - TIE_W / 2, kmid + s * TIE_SPAN / 2 + TIE_W / 2,
+                TIE_Y - TIE_L / 2, TIE_Y + TIE_L / 2, floor_bot - 1, ft + 1) for s in (-1, 1)]
+    body = diff(body, [*windows, *slots, *vents, *ties])
     body = union([body, *tabs])
 
     info = {
@@ -186,6 +195,9 @@ def build() -> tuple[trimesh.Trimesh, dict]:
         "slot_edge_to_panel_edge_mm": round(PANEL_W / 2 - centers - half_len - SLOT_W / 2, 2),
         "pc_bottom_z_mm": round(ft, 2),
         "vent_slots": n,
+        "pc_to_kvm_gap_mm": BAY_GAP,
+        "zip_tie_slots_mm": {"size": [TIE_W, TIE_L], "center_y": TIE_Y, "span": TIE_SPAN,
+                             "behind_kvm_body_end_mm": round(TIE_Y - TIE_L / 2 - (KVM_D - KVM_HEAD_D), 2)},
     }
     return body, info
 
@@ -237,6 +249,14 @@ def main(argv: list[str] | None = None) -> int:
         cols = np.vstack([np.tile(rgb[0], (len(body.faces), 1)), np.tile(rgb[1], (len(pc.faces), 1)),
                           np.tile(rgb[2], (len(kvm.faces), 1))])
         printprep.render_colored_faces(tri, cols, out / f"view-{name}.png", "", views=((angle, name),), px_per_mm=4)
+    # Top-down view (floor, vents, zip-tie slots): tip the model so +Z faces the renderer's camera (-Y).
+    tip = trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0])
+    tri = np.concatenate([m.copy().apply_transform(tip).triangles for m in (body, pc, kvm)])
+    cols = np.vstack([np.tile(rgb[i], (len(m.faces), 1)) for i, m in enumerate((body, pc, kvm))])
+    printprep.render_colored_faces(tri, cols, out / "view-top.png", "", views=((0, "top"),), px_per_mm=4)
+    tri = tri[: len(body.faces)]
+    printprep.render_colored_faces(tri, cols[: len(body.faces)], out / "view-top-empty.png", "",
+                                   views=((0, "top, devices removed"),), px_per_mm=4)
     (out / "report.json").write_text(json.dumps(info, indent=2))
     print(json.dumps(info, indent=2))
     return 0
