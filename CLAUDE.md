@@ -29,6 +29,9 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
 - `cad/puzzle_soldier.py`: kids' tray puzzle of the Framingham Shoppers World soldier (8 in tall, traced from the
   user's front photo, widened 1.5x). 8 pieces with small colors as flush inlays; the board floor is colored under
   each piece. One plate (256 mm bed), 8 filaments. `python -m cad.puzzle_soldier`.
+- `cad/wizard_staff.py`: 5 ft gnarled-wood wizard's staff in 6 upright prints (H2D, <300 mm each): keyed spigot/socket
+  joints, 22.6 mm bore for a hidden 1/2" Sch 40 PVC core (closed foot), head with a cup for a bubble maker
+  (`WAND_*` are placeholders until the wand is measured). `python -m cad.wizard_staff`.
 - `tests/`: offline tests against a fake Meshy API (`tests/fakes.py`). No key or credits needed.
 
 ## Conventions

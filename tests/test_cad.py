@@ -166,3 +166,19 @@ def test_soldier_puzzle_fits_and_prints(tmp_path):
     back = bambu3mf.read_parts(path)
     assert sorted(p["filament"] for p in back) == list(range(1, 9))
     assert sum(len(p["mesh"].faces) for p in back) == sum(len(p.mesh.faces) for p in parts)
+
+
+def test_wizard_staff_segments_join_and_clear_the_pvc():
+    from cad import wizard_staff as w
+
+    a, b = w.shaft_segment(0), w.shaft_segment(1)
+    for m in (a, b):
+        assert m.is_watertight and len(m.split(only_watertight=False)) == 1
+        assert m.extents[2] <= w.MAX_PRINT_H
+    inter = trimesh.boolean.intersection([a, b], engine="manifold")
+    assert (inter.volume if len(inter.faces) else 0) < 1e-3          # spigot fits its socket
+    pipe = w.cyl(w.PVC_OD / 2, w.FOOT_T + 1, w.joints()[2] - 1)
+    assert (w.to_m(a) ^ pipe).volume() + (w.to_m(b) ^ pipe).volume() < 1e-3
+    assert a.contains([[0, 0, w.FOOT_T / 2]]).all()                   # closed foot hides the pipe
+    assert w.min_wall() >= 6.0
+    assert w.joints()[-1] + w.HEAD_H == pytest.approx(w.TOTAL_H)
