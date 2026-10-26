@@ -32,6 +32,10 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
 - `cad/wizard_staff.py`: 5 ft gnarled-wood wizard's staff in 6 upright prints (H2D, <300 mm each): keyed spigot/socket
   joints, 22.6 mm bore for a hidden 1/2" Sch 40 PVC core (closed foot), head with a cup for a bubble maker
   (`WAND_*` are placeholders until the wand is measured). `python -m cad.wizard_staff`.
+- `kanto/`: separate project: Pokémon-themed Minecraft Bedrock world (Kanto: Pallet Town, Route 1, Viridian City
+  so far) generated from code, `python -m kanto` -> `output/kanto/Kanto.mcworld`. Pure Python (numpy). Block
+  names/states are validated against `kanto/data/bedrock_blocks.json`; button/gym logic is a behavior pack script
+  (`kanto/pack`). See `kanto/README.md` for the in-game test checklist.
 - `tests/`: offline tests against a fake Meshy API (`tests/fakes.py`). No key or credits needed.
 
 ## Conventions

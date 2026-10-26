@@ -1,0 +1,25 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Kanto",
+    "description": "Signs, buttons, gym tiles and location titles for the Kanto world.",
+    "uuid": "4f480f3f-bdcb-47d3-bd78-ed6687214c0a",
+    "version": [1, 0, 0],
+    "min_engine_version": [1, 21, 80]
+  },
+  "modules": [
+    {
+      "type": "script",
+      "language": "javascript",
+      "uuid": "f9367422-af1e-4252-8984-ab6a58c4d5cb",
+      "entry": "scripts/main.js",
+      "version": [1, 0, 0]
+    }
+  ],
+  "dependencies": [
+    {
+      "module_name": "@minecraft/server",
+      "version": "2.0.0"
+    }
+  ]
+}
