@@ -182,3 +182,18 @@ def test_wizard_staff_segments_join_and_clear_the_pvc():
     assert a.contains([[0, 0, w.FOOT_T / 2]]).all()                   # closed foot hides the pipe
     assert w.min_wall() >= 6.0
     assert w.joints()[-1] + w.HEAD_H == pytest.approx(w.TOTAL_H)
+
+
+def test_rack_sign_drawer_fits_and_prints():
+    from cad import rack_sign_drawer as d
+
+    fr = d.frame()
+    parts, info = d.drawer("Salsa", "Homelab")
+    assert fr.is_watertight and all(m.is_watertight for _, m in parts)
+    assert fr.extents[2] == pytest.approx(d.U - 0.79, abs=0.01) and fr.extents[0] == pytest.approx(254.0)
+    assert info["sleeve_fits_between_rails"] and info["text_inside_plate"] and info["text_clear_of_pull_mm"] > 2
+    drawer = d.union([m for _, m in parts])
+    inter = trimesh.boolean.intersection([fr, drawer], engine="manifold")
+    assert (inter.volume if len(inter.faces) else 0) < 1e-3
+    # Flat bottom: the drawer's lowest faces are all at one height (prints upright, no support).
+    assert d.overhang(drawer.copy().apply_translation([0, 0, -drawer.bounds[0][2]])) < 300
