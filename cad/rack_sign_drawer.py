@@ -32,10 +32,7 @@ from cad.rack_mount_10in import box, diff, rounded_panel, slot, union
 from meshy3d import bambu3mf, printprep
 
 U, PANEL_W, PANEL_T, PANEL_CORNER_R = rack.U, rack.PANEL_W, rack.PANEL_T, rack.PANEL_CORNER_R
-SLOT_W, SLOT_EXTRA, OPENING_W = rack.SLOT_W, rack.SLOT_EXTRA, rack.OPENING_W
-# Wider than the shelf's 238-242 mm: the first print of this frame (same 238-242 slots as the shelf, which
-# fit) would not reach the rack holes, so the slots now also reach inward to 234 mm. Outer end unchanged.
-HOLE_SPAN = (234.0, 242.0)
+HOLE_SPAN, SLOT_W, SLOT_EXTRA, OPENING_W = rack.HOLE_SPAN, rack.SLOT_W, rack.SLOT_EXTRA, rack.OPENING_W
 SCREW_HEAD_D = 12.0                  # M6 pan/button head, for the clearance check against the drawer front
 PANEL_H = U - 0.79
 HOLE_Z = (6.35, 38.1)                # top and bottom hole of the unit (EIA-310 pattern)

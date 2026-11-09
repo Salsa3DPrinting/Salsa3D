@@ -14,7 +14,7 @@ Sources for the numbers:
 - Rack: 1U = 44.45 mm; a panel is 1/32" (0.79 mm) shorter than its units; holes per U at 6.35,
   22.225 and 38.1 mm (EIA-310 pattern); 10" panel width 254 mm; clear opening between rails
   222.25 mm. Hole spacing: sources quote ~235 / 236.5 mm for 10" racks, but the user's rack measures
-  ~240 mm center-to-center (ruler), so the slots are centered on 240 mm and span 238-242 mm.
+  ~240 mm center-to-center (ruler); slots spanning 238-242 mm only just reached, so they now span 234-242 mm.
 
 Run: python -m cad.rack_mount_10in [--out DIR]
 """
@@ -52,7 +52,7 @@ PANEL_T = 4.0
 PANEL_CORNER_R = 5.0             # rounded outer corners of the faceplate (seen from the front)
 OPENING_W = 222.25               # clear width between the rails
 HOLE_Z = (6.35, 38.1, 6.35 + U, 38.1 + U)  # top and bottom hole of each U
-HOLE_SPAN = (238.0, 242.0)       # center-to-center range the slots cover (user measured ~240 mm)
+HOLE_SPAN = (234.0, 242.0)       # center-to-center range the slots cover (238-242 only just fit the user's rack)
 SLOT_W = 6.5                     # M6 clearance
 SLOT_EXTRA = 0.0                 # extra slot length beyond HOLE_SPAN, each side
 
