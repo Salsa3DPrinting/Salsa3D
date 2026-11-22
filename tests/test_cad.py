@@ -197,3 +197,25 @@ def test_rack_sign_drawer_fits_and_prints():
     assert (inter.volume if len(inter.faces) else 0) < 1e-3
     # Flat bottom: the drawer's lowest faces are all at one height (prints upright, no support).
     assert d.overhang(drawer.copy().apply_translation([0, 0, -drawer.bounds[0][2]])) < 300
+
+
+def test_ornament_trace_makes_a_printable_color_in_ornament(tmp_path):
+    from PIL import Image, ImageDraw
+
+    from cad import ornament_trace as ot
+    from cad.coloring_ornaments import check
+
+    im = Image.new("L", (600, 760), 255)
+    d = ImageDraw.Draw(im)
+    d.ellipse((40, 150, 560, 670), outline=0, width=14)          # ball rim
+    d.rectangle((250, 100, 350, 160), outline=0, width=10)        # cap
+    d.ellipse((270, 30, 330, 100), outline=0, width=10)           # hanging ring
+    d.line((300, 200, 300, 620), fill=0, width=10)                # a stripe across the ball
+    d.ellipse((150, 380, 170, 400), outline=0, width=6)           # a ring too small for a marker
+    path = tmp_path / "art.png"
+    im.save(path)
+    back, lines, info = ot.trace(path)
+    assert back.bounds[2] - back.bounds[0] == pytest.approx(ot.BODY_D, abs=0.2)
+    assert info["hanging_hole_mm"] and info["small_spaces_filled"] >= 1
+    assert check(back, lines)["too_small"] == []
+    assert all(m.is_watertight for _, _, m in ot.build(back, lines))
