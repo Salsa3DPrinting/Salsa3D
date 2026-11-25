@@ -36,7 +36,8 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
   `cad/ornament_fixes.py` holds per-image hand edits applied before tracing (gift lid, reindeer antlers).
   `python -m cad.ornament_svg`: SVGs of the art for Fusion (lines / back / both, mm, 100 mm ball), made colorable:
   lines >= 1.6 mm, every white space fits a 1 mm marker tip (checked in report.json). `--line 1.2 gift` redraws the
-  strokes at an even width from their centerlines (round solid dots stay solid).
+  strokes at an even width from their centerlines (round solid dots stay solid); `--perfect-dots` turns polka dots
+  into exact outlined circles (Hough search on the centerlines), `--solid-ring` fills the hanging ring black.
 - `cad/puzzle_soldier.py`: kids' tray puzzle of the Framingham Shoppers World soldier (8 in tall, traced from the
   user's front photo, widened 1.5x). 8 pieces with small colors as flush inlays; the board floor is colored under
   each piece. One plate (256 mm bed), 8 filaments. `python -m cad.puzzle_soldier`.

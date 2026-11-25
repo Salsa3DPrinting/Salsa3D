@@ -142,9 +142,111 @@ def thin_skeleton(mask: np.ndarray) -> np.ndarray:
             return img[1:-1, 1:-1].astype(bool)
 
 
-def restroke(png: Path, name: str, target: float, solid_mm: float = 3.4, up: int = 3):
+def _circle_fit(ys: np.ndarray, xs: np.ndarray):
+    """Least-squares circle through pixels: (cy, cx, r, rms)."""
+    A = np.c_[2 * xs, 2 * ys, np.ones(len(xs))]
+    c, *_ = np.linalg.lstsq(A, xs**2 + ys**2, rcond=None)
+    cx, cy = c[0], c[1]
+    r = np.sqrt(c[2] + cx**2 + cy**2)
+    rms = np.sqrt(np.mean((np.hypot(xs - cx, ys - cy) - r) ** 2))
+    return cy, cx, r, rms
+
+
+def _draw_arc(mask: np.ndarray, cy: float, cx: float, r: float, a0: float, a1: float) -> None:
+    n = max(16, int(abs(a1 - a0) * r * 2))
+    t = np.linspace(a0, a1, n)
+    yy, xx = np.round(cy + r * np.sin(t)).astype(int), np.round(cx + r * np.cos(t)).astype(int)
+    ok = (yy >= 0) & (yy < mask.shape[0]) & (xx >= 0) & (xx < mask.shape[1])
+    mask[yy[ok], xx[ok]] = True
+
+
+def find_circles(skel: np.ndarray, mm_per_px: float, r_mm=(1.5, 3.6), min_cover: float = 0.45,
+                 step_mm: float = 0.1):
+    """Circles drawn as outlines (polka dots, part-dots cut by an edge): a circular Hough search on the
+    centerlines. Returns [(cy, cx, r)] in pixels, strongest first, without near-duplicates."""
+    from scipy import ndimage
+    from scipy.signal import fftconvolve
+
+    f = 4                                                          # search on a 4x coarser grid (fast)
+    small = ndimage.maximum_filter(skel.astype(np.uint8), size=f)[::f, ::f].astype(float)
+    found = []
+    for r_mm_i in np.arange(r_mm[0], r_mm[1] + 1e-9, step_mm):
+        r = r_mm_i / mm_per_px / f
+        n = int(np.ceil(r)) + 2
+        yy, xx = np.mgrid[-n:n + 1, -n:n + 1]
+        ring = (np.abs(np.hypot(yy, xx) - r) <= 0.75).astype(float)
+        acc = fftconvolve(small, ring, mode="same") / ring.sum()
+        peaks = (acc == ndimage.maximum_filter(acc, size=int(2 * r))) & (acc >= min_cover)
+        for cy, cx in zip(*np.nonzero(peaks)):
+            found.append((acc[cy, cx], cy * f + f / 2, cx * f + f / 2, r * f))
+    found.sort(reverse=True)
+    keep = []
+    for score, cy, cx, r in found:
+        if all(np.hypot(cy - ky, cx - kx) > 0.6 * max(r, kr) for ky, kx, kr in keep):
+            keep.append((cy, cx, r))
+    return keep
+
+
+def perfect_circles(skel: np.ndarray, mm_per_px: float, end_keep_mm: float = 0.8):
+    """Swap the centerlines of outlined dots (whole or cut by an edge) for exact circles/arcs.
+
+    The arc is redrawn only over the angles where the art has it; near the arc's ends (where it meets
+    an edge or the ribbon) the original pixels are left alone so those lines stay connected."""
+    out = skel.copy()
+    circles = find_circles(skel, mm_per_px)
+    radii = []
+    band = 0.5 / mm_per_px
+    yy_all, xx_all = np.nonzero(skel)
+    for cy, cx, r in circles:
+        # refine with a least-squares fit on the centerline pixels near this ring
+        near = np.abs(np.hypot(yy_all - cy, xx_all - cx) - r) <= band
+        if near.sum() < 20:
+            continue
+        cy, cx, r, _ = _circle_fit(yy_all[near].astype(float), xx_all[near].astype(float))
+        d = np.hypot(yy_all - cy, xx_all - cx)
+        on = np.abs(d - r) <= band
+        ang = np.arctan2(yy_all[on] - cy, xx_all[on] - cx)
+        bins = np.zeros(360, bool)
+        bins[(np.degrees(ang).astype(int) + 360) % 360] = True
+        bins = np.convolve(np.r_[bins, bins, bins].astype(int), np.ones(5), "same")[360:720] > 0   # close tiny gaps
+        if bins.all():
+            spans = [(0.0, 2 * np.pi)]
+            ends = []
+        else:
+            start = int(np.argmin(bins))                          # a gap: walk the circle from there
+            spans, ends, k = [], [], 0
+            order = [(start + t) % 360 for t in range(360)]
+            while k < 360:
+                if bins[order[k]]:
+                    a = k
+                    while k < 360 and bins[order[k]]:
+                        k += 1
+                    a0, a1 = np.radians(order[a]), np.radians(order[a]) + np.radians(k - a)
+                    spans.append((a0, a1))
+                    ends += [a0, a1]
+                k += 1
+        keep_ang = end_keep_mm / (r * mm_per_px)                   # radians of original kept at arc ends
+        for a0, a1 in spans:
+            sel = on.copy()
+            a = np.arctan2(yy_all - cy, xx_all - cx)
+            rel = (a - a0) % (2 * np.pi)
+            inside = rel <= (a1 - a0)
+            if ends:
+                inside &= (rel > keep_ang) & (rel < (a1 - a0) - keep_ang)
+            sel &= inside
+            out[yy_all[sel], xx_all[sel]] = False
+            _draw_arc(out, cy, cx, r, a0, a1)
+        radii.append(r)
+    return out, radii
+
+
+def restroke(png: Path, name: str, target: float, solid_mm: float = 3.4, up: int = 3,
+             perfect_dots: bool = False, solid_ring: bool = False):
     """Redraw the art's strokes at an even `target` width from their centerlines (raster), keeping parts
-    thicker than `solid_mm` (filled dots, a heavy rim) solid. Returns (back, lines, w, h) like vectorize."""
+    thicker than `solid_mm` (filled dots, a heavy rim) solid. Returns (back, lines, w, h, info).
+
+    perfect_dots: round solid dots become exact outlined circles (colorable), and nearly circular arcs
+    (dots cut by an edge) become exact arcs. solid_ring: the hanging ring is filled solid black."""
     from scipy import ndimage
 
     src = Image.open(png).convert("L")
@@ -164,6 +266,25 @@ def restroke(png: Path, name: str, target: float, solid_mm: float = 3.4, up: int
         if max(hh, ww) / max(1, min(hh, ww)) > 1.8 or fill < 0.5:
             solid[lab == i] = False
     skel = thin_skeleton(black & ~ndimage.binary_erosion(solid, iterations=2))
+    info = {}
+    if perfect_dots:
+        skel, radii = perfect_circles(skel, mm_per_px)
+        info["arcs_made_round"] = len(radii)
+        # Solid dots become outlined circles the same size as the art's outlined dots (so they all match),
+        # shrunk where a full-size circle would run into another line.
+        r_dot = float(np.median(radii)) if radii else None
+        lab, n_dots = ndimage.label(solid)
+        others = ndimage.distance_transform_edt(~skel)                # px to the nearest other centerline
+        gap_px = (target + 1.0) / mm_per_px                         # a stroke plus a 1 mm marker space
+        for i in range(1, n_dots + 1):
+            ys, xs = np.nonzero(lab == i)
+            cy, cx = ys.mean(), xs.mean()
+            r = r_dot if r_dot else np.sqrt(len(ys) / np.pi) - target / 2 / mm_per_px
+            r = min(r, others[round(cy), round(cx)] - gap_px)
+            if r * mm_per_px >= 0.5 + target / 2:                   # still has a colorable middle
+                _draw_arc(skel, cy, cx, r, 0, 2 * np.pi)
+        solid[:] = False
+        info["solid_dots_made_outlines"] = int(n_dots)
     strokes = ndimage.distance_transform_edt(~skel) * mm_per_px <= target / 2
     new = solid | strokes
     img = np.where(new, 0.0, 1.0)
@@ -177,10 +298,22 @@ def restroke(png: Path, name: str, target: float, solid_mm: float = 3.4, up: int
         whole = unary_union([sg.Polygon(g.exterior) for g in parts])
     _, by0, _, by1 = whole.bounds
     inside = whole.difference(lines)
+    # the hole is the roundest white space up top (the ring's white band around it is a C or an annulus)
     holes = [g for g in getattr(inside, "geoms", [inside])
-             if name != "soldier" and g.centroid.y > by1 - 0.15 * (by1 - by0) and g.area < 0.01 * whole.area]
-    back = whole.difference(max(holes, key=lambda g: g.area)) if holes else whole
-    return back, lines.intersection(back), w, h
+             if name != "soldier" and g.centroid.y > by1 - 0.15 * (by1 - by0) and g.area < 0.01 * whole.area
+             and not g.interiors and 4 * np.pi * g.area / g.length**2 > 0.7]
+    hole = max(holes, key=lambda g: 4 * np.pi * g.area / g.length**2) if holes else sg.Polygon()
+    back = whole.difference(hole)
+    lines = lines.intersection(back)
+    if solid_ring and not hole.is_empty:
+        # fill every white space in the ring around the hanging hole (and the wedge under it) black
+        hole_r = np.sqrt(hole.area / np.pi)
+        near = hole.centroid.buffer(hole_r * 2.6)
+        white = back.difference(lines)
+        ring_white = [g for g in getattr(white, "geoms", [white]) if g.within(near.buffer(0.5))]
+        lines = unary_union([lines, *[g.buffer(0.01) for g in ring_white]]).intersection(back)
+        info["ring_spaces_filled"] = len(ring_white)
+    return back, lines, w, h, info
 
 
 def verify(back, lines, marker: float = MARKER_D, min_line: float = MIN_LINE) -> dict:
@@ -206,6 +339,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--line", type=float, default=None,
                     help="make strokes this wide (mm); default keeps the traced width (at least MIN_LINE)")
     ap.add_argument("--marker", type=float, default=MARKER_D)
+    ap.add_argument("--perfect-dots", action="store_true", help="exact outlined circles for polka dots (with --line)")
+    ap.add_argument("--solid-ring", action="store_true", help="fill the hanging ring solid black (with --line)")
     ap.add_argument("names", nargs="*", help="only these designs (default: all)")
     args = ap.parse_args(argv)
     min_line = args.line or MIN_LINE
@@ -217,8 +352,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
         slim_info = {}
         if args.line:
-            back, lines, w, h = restroke(png, name, args.line)
-            slim_info = {"restroked_mm": args.line}
+            back, lines, w, h, extra = restroke(png, name, args.line, perfect_dots=args.perfect_dots,
+                                                solid_ring=args.solid_ring)
+            slim_info = {"restroked_mm": args.line, **extra}
         else:
             back, lines, w, h = vectorize(png, name)
         fix = {"thin_line_parts_thickened": 0, "spaces_filled": 0, "passes": 0}

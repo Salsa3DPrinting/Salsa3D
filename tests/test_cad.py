@@ -250,3 +250,19 @@ def test_ornament_svg_is_sized_in_mm(tmp_path):
     assert w == pytest.approx(osvg.BODY_D, abs=0.1) and not lines.is_empty and back.area > lines.area
     root = ET.fromstring(osvg.svg([("lines", lines, "#000")], w, h))
     assert root.get("width") == f"{w:.3f}mm" and root.get("viewBox") == f"0 0 {w:.3f} {h:.3f}"
+
+
+def test_find_circles_spots_outlined_dots():
+    from PIL import Image, ImageDraw
+
+    from cad import ornament_svg as osvg
+
+    im = Image.new("1", (400, 300), 0)
+    d = ImageDraw.Draw(im)
+    for cx, cy in ((80, 80), (200, 150), (320, 220)):
+        d.ellipse((cx - 30, cy - 30, cx + 30, cy + 30), outline=1, width=1)
+    d.line((0, 270, 399, 270), fill=1)                                 # a straight line is not a circle
+    found = osvg.find_circles(np.asarray(im, dtype=bool), mm_per_px=0.08, r_mm=(2.0, 2.8))
+    assert len(found) == 3
+    for cy, cx, r in found:
+        assert abs(r - 30) < 3
