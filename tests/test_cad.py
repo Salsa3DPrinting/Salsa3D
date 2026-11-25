@@ -230,3 +230,23 @@ def test_ornament_fixes_draw_colorable_shapes():
     for name, fix in FIXES.items():
         out = fix(blank)
         assert out.size == blank.size and 0 < (np.asarray(out) < 128).mean() < 0.2, name
+
+
+def test_ornament_svg_is_sized_in_mm(tmp_path):
+    import xml.etree.ElementTree as ET
+
+    from PIL import Image, ImageDraw
+
+    from cad import ornament_svg as osvg
+
+    im = Image.new("L", (600, 760), 255)
+    d = ImageDraw.Draw(im)
+    d.ellipse((40, 150, 560, 670), outline=0, width=14)
+    d.ellipse((270, 30, 330, 100), outline=0, width=10)
+    d.line((270, 95, 300, 152), fill=0, width=10)
+    png = tmp_path / "x.png"
+    im.save(png)
+    back, lines, w, h = osvg.vectorize(png, "x")
+    assert w == pytest.approx(osvg.BODY_D, abs=0.1) and not lines.is_empty and back.area > lines.area
+    root = ET.fromstring(osvg.svg([("lines", lines, "#000")], w, h))
+    assert root.get("width") == f"{w:.3f}mm" and root.get("viewBox") == f"0 0 {w:.3f} {h:.3f}"

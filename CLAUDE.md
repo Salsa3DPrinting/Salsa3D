@@ -34,6 +34,7 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
   `python -m cad.ornament_trace IMAGE NAME`: lines thickened to >= 1.6 mm, spaces a 4 mm marker tip can't enter
   filled black, 76 mm ball. `coloring_ornaments` holds the code-drawn drafts and the marker-tip `check`;
   `cad/ornament_fixes.py` holds per-image hand edits applied before tracing (gift lid, reindeer antlers).
+  `python -m cad.ornament_svg`: faithful SVG traces of the art (lines / back / both, in mm) for modeling in Fusion.
 - `cad/puzzle_soldier.py`: kids' tray puzzle of the Framingham Shoppers World soldier (8 in tall, traced from the
   user's front photo, widened 1.5x). 8 pieces with small colors as flush inlays; the board floor is colored under
   each piece. One plate (256 mm bed), 8 filaments. `python -m cad.puzzle_soldier`.
