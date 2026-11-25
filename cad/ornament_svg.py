@@ -1,6 +1,8 @@
 """Vectorize the ornament concept art (PNG) into SVGs for modeling in Fusion 360.
 
-A faithful trace (no thickening, no filling): the black areas of the art become closed filled paths.
+The black areas of the art become closed filled paths, then the drawing is made colorable: line
+parts thinner than MIN_LINE are thickened (so they print), and any white space a MARKER_D marker tip
+can't get into is filled black. The result is checked against both rules (report.json).
 For each design:
 - <name>-lines.svg  the black linework (closed profiles; even-odd fill, so holes stay holes)
 - <name>-back.svg   the ornament's outer shape (silhouette) with the hanging hole cut out
@@ -24,8 +26,10 @@ from shapely.ops import unary_union
 
 from cad.ornament_trace import black_shapes
 
-BODY_D = 76.0
-SOLDIER_H = 70.0             # fits inside a 76 mm ball ornament later
+BODY_D = 100.0
+SOLDIER_H = 80.0             # fits inside a 100 mm ball ornament later
+MARKER_D = 1.0               # every white space must hold a circle this size (a 1 mm marker tip)
+MIN_LINE = 1.6               # thinnest black line (4 passes of a 0.4 mm nozzle)
 SIMPLIFY_MM = 0.03           # keeps curves smooth while keeping point counts reasonable for Fusion
 MIN_AREA_MM2 = 0.05          # drop specks
 
@@ -84,6 +88,47 @@ def vectorize(png: Path, name: str):
     return back, lines, w, h
 
 
+def _opening(g, d: float):
+    return g.buffer(-d / 2, quad_segs=8).buffer(d / 2, quad_segs=8)
+
+
+def make_colorable(back, lines, marker: float = MARKER_D, min_line: float = MIN_LINE):
+    """Thicken too-thin line parts and fill white spaces a marker tip can't enter. Returns (back, lines, info).
+
+    Lines may grow past the outer edge (e.g. a thin hanging ring or rim), so the back grows with them.
+    """
+    thin = lines.difference(_opening(lines, min_line)).buffer(0)
+    grown = []
+    for g in getattr(thin, "geoms", [thin]):
+        if g.area < 0.02:
+            continue                                    # corner crumbs, not real thin strokes
+        t = 2 * g.area / g.length                      # stroke width estimate of this thin bit
+        grown.append(g.buffer(max(0.1, (min_line - t) / 2 + 0.05), quad_segs=6))
+    lines = unary_union([lines, *grown]).simplify(SIMPLIFY_MM)
+    back = unary_union([back, lines]).simplify(SIMPLIFY_MM)
+    lines = lines.intersection(back)
+    regions = [g for g in getattr(back.difference(lines), "geoms", [back.difference(lines)]) if g.area > 1e-4]
+    filled = [g for g in regions if g.buffer(-marker / 2).is_empty]
+    lines = unary_union([lines, *[g.buffer(0.01) for g in filled]]).intersection(back)
+    return back, lines, {"thin_line_parts_thickened": len(grown), "spaces_filled": len(filled)}
+
+
+def verify(back, lines, marker: float = MARKER_D, min_line: float = MIN_LINE) -> dict:
+    """Check the final drawing: no white space too small for the marker, no line thinner than min_line."""
+    white = back.difference(lines)
+    regions = [g for g in getattr(white, "geoms", [white]) if g.area > 1e-4]
+    too_small = [g for g in regions if g.buffer(-marker / 2 + 1e-3).is_empty]
+    hard_to_reach = [g for g in regions
+                     if _opening(g, marker).area / g.area < 0.9]
+    thin = lines.difference(_opening(lines, min_line - 0.02))
+    # real thin strokes, not the crumbs an opening shaves off sharp outside corners (< 0.3 mm wide)
+    thin_parts = [g for g in getattr(thin, "geoms", [thin]) if g.area > 0.05 and 2 * g.area / g.length >= 0.3]
+    return {"white_spaces": len(regions), "spaces_too_small_for_marker": len(too_small),
+            "spaces_with_corners_out_of_reach": len(hard_to_reach),
+            "smallest_space_mm2": round(min(g.area for g in regions), 2) if regions else None,
+            "line_parts_thinner_than_min": len(thin_parts)}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Ornament concept art -> SVG for Fusion 360")
     ap.add_argument("--src", type=Path, default=Path("output/ornament-art"))
@@ -94,12 +139,19 @@ def main(argv: list[str] | None = None) -> int:
     for png in sorted(args.src.glob("*/*/gen-1.png")):
         name = png.parts[-3]
         back, lines, w, h = vectorize(png, name)
+        fix = {"thin_line_parts_thickened": 0, "spaces_filled": 0, "passes": 0}
+        for _ in range(6):                        # fixing can create new slivers; repeat until clean
+            back, lines, f = make_colorable(back, lines)   # simplifies before filling, so no slivers return
+            fix = {k: fix[k] + f.get(k, 0) for k in fix} | {"passes": fix["passes"] + 1}
+            v = verify(back, lines)
+            if not v["spaces_too_small_for_marker"] and not v["line_parts_thinner_than_min"]:
+                break
         (args.out / f"{name}-lines.svg").write_text(svg([("lines", lines, "#000000")], w, h))
         (args.out / f"{name}-back.svg").write_text(svg([("back", back, "#000000")], w, h))
         (args.out / f"{name}.svg").write_text(svg([("back", back, "#DDDDDD"), ("lines", lines, "#000000")], w, h))
         n_pts = sum(len(r.coords) for r in _rings(lines))
-        report[name] = {"size_mm": [round(w, 1), round(h, 1)], "line_profiles": len(getattr(lines, "geoms", [lines])),
-                        "points": n_pts}
+        report[name] = {"size_mm": [round(w, 1), round(h, 1)], **fix, **verify(back, lines),
+                        "line_profiles": len(getattr(lines, "geoms", [lines])), "points": n_pts}
     (args.out / "report.json").write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
     return 0
