@@ -32,7 +32,8 @@ When the user brings a photo, follow `/photo-to-print` (`.claude/skills/photo-to
 - `cad/coloring_ornaments.py` + `cad/ornament_trace.py`: color-in tree ornaments (1.0 mm white back, black lines
   0.4 mm proud, like the user's reference). Concept art from Meshy (`output/ornament-art/`) is traced with
   `python -m cad.ornament_trace IMAGE NAME`: lines thickened to >= 1.6 mm, spaces a 4 mm marker tip can't enter
-  filled black, 76 mm ball. `coloring_ornaments` holds the code-drawn drafts and the marker-tip `check`.
+  filled black, 76 mm ball. `coloring_ornaments` holds the code-drawn drafts and the marker-tip `check`;
+  `cad/ornament_fixes.py` holds per-image hand edits applied before tracing (gift lid, reindeer antlers).
 - `cad/puzzle_soldier.py`: kids' tray puzzle of the Framingham Shoppers World soldier (8 in tall, traced from the
   user's front photo, widened 1.5x). 8 pieces with small colors as flush inlays; the board floor is colored under
   each piece. One plate (256 mm bed), 8 filaments. `python -m cad.puzzle_soldier`.

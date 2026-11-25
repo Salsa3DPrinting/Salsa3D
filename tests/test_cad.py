@@ -219,3 +219,14 @@ def test_ornament_trace_makes_a_printable_color_in_ornament(tmp_path):
     assert info["hanging_hole_mm"] and info["small_spaces_filled"] >= 1
     assert check(back, lines)["too_small"] == []
     assert all(m.is_watertight for _, _, m in ot.build(back, lines))
+
+
+def test_ornament_fixes_draw_colorable_shapes():
+    from PIL import Image
+
+    from cad.ornament_fixes import FIXES
+
+    blank = Image.new("L", (896, 1200), 255)
+    for name, fix in FIXES.items():
+        out = fix(blank)
+        assert out.size == blank.size and 0 < (np.asarray(out) < 128).mean() < 0.2, name

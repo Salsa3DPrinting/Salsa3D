@@ -141,11 +141,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("name")
     ap.add_argument("--body", type=float, default=BODY_D)
     ap.add_argument("--out", type=Path, default=Path("output/cad-ornaments"))
+    ap.add_argument("--no-fix", action="store_true", help="skip the hand fixes in cad/ornament_fixes.py")
     args = ap.parse_args(argv)
-    back, lines, info = trace(args.image, args.body)
-    info.update(check(back, lines))
     out = args.out / args.name
     out.mkdir(parents=True, exist_ok=True)
+    image = args.image
+    from cad.ornament_fixes import FIXES
+
+    if args.name in FIXES and not args.no_fix:
+        from PIL import Image
+
+        image = out / f"{args.name}-art-fixed.png"
+        FIXES[args.name](Image.open(args.image).convert("L")).save(image)
+    back, lines, info = trace(image, args.body)
+    info.update(check(back, lines))
     parts = build(back, lines)
     info["watertight"] = {n: bool(m.is_watertight) for _, n, m in parts}
     bambu3mf.write([bambu3mf.Part(n, m, s) for s, n, m in parts], [WHITE, BLACK], out / f"{args.name}.3mf",
